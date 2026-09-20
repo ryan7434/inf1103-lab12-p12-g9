@@ -101,6 +101,8 @@ DAIRY_ITEMS = {
     "whole milk",
     "skim milk",
     "fresh milk",
+    "milk powder",
+    "milk solids",
     "evaporated milk",
     "condensed milk",
     "malted milk",
@@ -156,6 +158,7 @@ ALCOHOL_ITEMS = {
     "liquor",
     "marsala",
     "cider",
+    "mirin",
 }
 
 # Pork-items kept seperately from Meat_items for halal dietary restrictions.
@@ -182,16 +185,74 @@ PORK_ITEMS = {
     "pork rind",
 }
 
+# Combining the restriction groups
+VEGETARIAN_RESTRICTED_INGREDIENTS = (
+    MEAT_ITEMS
+    | FISH_AND_SEAFOOD_ITEMS
+    | ANIMAL_DERIVED_ITEMS
+)
+
+VEGAN_RESTRICTED_INGREDIENTS = (
+    VEGETARIAN_RESTRICTED_INGREDIENTS
+    | EGG_ITEMS
+    | DAIRY_ITEMS
+    | OTHER_ITEMS
+)
+
+LACTOSE_INTOLERANT_RESTRICTED_INGREDIENTS = DAIRY_ITEMS
+
+HALAL_RESTRICTED_INGREDIENTS = (
+    PORK_ITEMS
+    | ALCOHOL_ITEMS
+    | {
+        "gelatin",
+        "gelatine",
+        "animal fat",
+    }
+)
+
+# Maps each dietary-menu option to its identifier, display text and set of restricted items.
+DIETARY_CHOICES = {
+    "1": {
+        "key": "halal",
+        "display_name": "Halal preference",
+        # Halal preference: filters known pork items, alcohol items, and other non-halal ingredients.
+        "restricted_ingredients": HALAL_RESTRICTED_INGREDIENTS,
+        },
+
+    "2": {
+        "key": "vegetarian",
+        "display_name": "Vegetarian (Able to consume eggs and dairy products)",
+        # Vegetarian option: eggs and dairy are allowed however meat, fish, seafood and animal derived items are excluded 
+        "restricted_ingredients": VEGETARIAN_RESTRICTED_INGREDIENTS,
+    },
+
+    "3": {
+        "key": "vegan",
+        "display_name": "Vegan",
+        # Vegan option: all vegetarian-restricted items including eggs, dairy and others are excluded.
+        "restricted_ingredients": VEGAN_RESTRICTED_INGREDIENTS,
+    },
+
+    "4": {
+        "key": "lactose_intolerant",
+        "display_name": "Lactose intolerant",
+        # Lactose intolerant: excludes all dairy items.
+        "restricted_ingredients": LACTOSE_INTOLERANT_RESTRICTED_INGREDIENTS,
+    },
 
     "5": {
         "key": "other_exclusions",
-        "display_name": "Other food exclusions (not listed above)",
-        "restricted_terms": set()
+        "display_name": "Other food exclusions/allergies (not listed above)",
+        # Will allow the user to enter specific exclusions or allergies manually.
+        "restricted_ingredients": set(),
     },
 
     "6": {
         "key": "none",
         "display_name": "No dietary restrictions",
-        "restricted_terms": set()
-    }
+        "restricted_ingredients": set(),
+    },
 }
+
+
