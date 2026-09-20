@@ -1,3 +1,55 @@
+STAPLE_INGREDIENTS = {
+    # Common Seasonings
+    "salt",
+    "sea salt",
+    "table salt",
+    "pepper",
+    "black pepper",
+    "white pepper",
+
+    # Common Cooking Oils
+    "oil",
+    "cooking oil",
+    "vegetable oil",
+    "canola oil",
+    "sunflower oil",
+    "olive oil",
+    "extra virgin olive oil",
+    "sesame oil",
+
+    # Common sauces and condiments
+    "soy sauce",
+    "light soy sauce",
+    "dark soy sauce",
+    "ketchup",
+    "mustard",
+    "vinegar",
+    "white vinegar",
+    "rice vinegar",
+    "apple cider vinegar",
+    "balsamic vinegar",
+    "hot sauce",
+    "chili sauce",
+
+    # Common dried herbs and spices
+    "garlic powder",
+    "onion powder",
+    "chili powder",
+    "chilli powder",
+    "chili flakes",
+    "chilli flakes",
+    "paprika",
+    "cumin",
+    "turmeric",
+    "curry powder",
+    "cinnamon",
+    "oregano",
+    "basil",
+    "thyme",
+    "bay leaves",
+}
+
+
 # Meat items
 MEAT_ITEMS = {
     "beef",
@@ -93,6 +145,7 @@ EGG_ITEMS = {
     "egg yolk",
     "mayonnaise",
     "mayo",
+    "casein",
 }
 
 # Dairy products.
@@ -218,7 +271,7 @@ DIETARY_CHOICES = {
         "display_name": "Halal preference",
         # Halal preference: filters known pork items, alcohol items, and other non-halal ingredients.
         "restricted_ingredients": HALAL_RESTRICTED_INGREDIENTS,
-        },
+    },
 
     "2": {
         "key": "vegetarian",
@@ -254,5 +307,3 @@ DIETARY_CHOICES = {
         "restricted_ingredients": set(),
     },
 }
-
-
