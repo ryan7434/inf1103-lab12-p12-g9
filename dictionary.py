@@ -264,40 +264,40 @@ HALAL_RESTRICTED_INGREDIENTS = (
     }
 )
 
-# Maps each dietary-menu option to its identifier, display text and set of restricted items.
+# Maps each dietary-menu option to its identifier, display text and set of restricted ingredients.
 DIETARY_CHOICES = {
     "1": {
         "key": "halal",
         "display_name": "Halal preference",
-        # Halal preference: filters known pork items, alcohol items, and other non-halal ingredients.
+        # Halal preference: filters known pork ingredients, alcohol, and other non-halal ingredients.
         "restricted_ingredients": HALAL_RESTRICTED_INGREDIENTS,
     },
 
     "2": {
         "key": "vegetarian",
         "display_name": "Vegetarian (Able to consume eggs and dairy products)",
-        # Vegetarian option: eggs and dairy are allowed however meat, fish, seafood and animal derived items are excluded 
+        # Vegetarian option: eggs and dairy are allowed however meat, fish, seafood and animal derived ingredients are excluded 
         "restricted_ingredients": VEGETARIAN_RESTRICTED_INGREDIENTS,
     },
 
     "3": {
         "key": "vegan",
         "display_name": "Vegan",
-        # Vegan option: all vegetarian-restricted items including eggs, dairy and others are excluded.
+        # Vegan option: all vegetarian-restricted ingredients including eggs, dairy and others are excluded.
         "restricted_ingredients": VEGAN_RESTRICTED_INGREDIENTS,
     },
 
     "4": {
         "key": "lactose_intolerant",
         "display_name": "Lactose intolerant",
-        # Lactose intolerant: excludes all dairy items.
+        # Lactose intolerant: excludes all dairy products.
         "restricted_ingredients": LACTOSE_INTOLERANT_RESTRICTED_INGREDIENTS,
     },
 
     "5": {
         "key": "other_exclusions",
         "display_name": "Other food exclusions/allergies (not listed above)",
-        # Will allow the user to enter specific exclusions or allergies manually.
+        # Will allow the user to enter specific food exclusions/allergies manually.
         "restricted_ingredients": set(),
     },
 
