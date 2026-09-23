@@ -6,6 +6,8 @@ STAPLE_INGREDIENTS = {
     "pepper",
     "black pepper",
     "white pepper",
+    "sugar",
+    "msg",
 
     # Common Cooking Oils
     "oil",
@@ -47,6 +49,15 @@ STAPLE_INGREDIENTS = {
     "basil",
     "thyme",
     "bay leaves",
+
+    # Common baking and thickening ingredients
+    "flour",
+    "all-purpose flour",
+    "plain flour",
+    "cornstarch",
+    "cornflour",
+    "baking powder",
+    "baking soda",
 }
 
 
@@ -90,12 +101,13 @@ MEAT_ITEMS = {
     "duck",
     "turkey",
     "turkey breast",
-    "quail",
+    "quail meat",
+    "chinese sausage",
+    "smoked duck", 
 }
 
 # Fish and seafood items
 FISH_AND_SEAFOOD_ITEMS = {
-    "fish",
     "fish fillet",
     "salmon",
     "tuna",
@@ -117,11 +129,12 @@ FISH_AND_SEAFOOD_ITEMS = {
     "mussel",
     "oyster",
     "scallop",
-    "seafood",
     "fish sauce",
     "oyster sauce",
     "shrimp paste",
     "belacan",
+    "cuttlefish",
+    "seafood stock",
 }
 
 # Items containing animal products used in cooking.
@@ -146,6 +159,10 @@ EGG_ITEMS = {
     "mayonnaise",
     "mayo",
     "casein",
+    "salted egg",
+    "quail egg",
+    "duck egg",
+    "century egg",
 }
 
 # Dairy products.
@@ -186,31 +203,20 @@ DAIRY_ITEMS = {
 # Other items avoided by vegans.
 OTHER_ITEMS = {
     "honey",
-    "beeswax",
+    "honeycomb",
     "royal jelly",
 }
 
 # Alcohol
 ALCOHOL_ITEMS = {
-    "alcohol",
-    "beer",
-    "stout",
     "wine",
     "red wine",
     "white wine",
-    "rice wine",
     "cooking wine",
-    "sake",
-    "rum",
-    "brandy",
-    "vodka",
-    "whisky",
-    "whiskey",
-    "gin",
-    "tequila",
-    "liquor",
+    "rice wine",
     "marsala",
     "cider",
+    "sake",
     "mirin",
 }
 
