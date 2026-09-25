@@ -71,7 +71,7 @@ RECIPE_RESPONSE_SCHEMA = {
                     "required": ["name", "quantity", "unit"],
                 },
             },
-            "description": {"type": "STRING"},
+            "description": {"type": "STRING - explain how this recipe fits the requested cuisine and taste preference"},
             "seasonings": {"type": "ARRAY", "items": {"type": "STRING"}},
             "instructions": {"type": "ARRAY", "items": {"type": "STRING"}},
             "estimated_cooking_time_minutes": {"type": "NUMBER"},
@@ -89,8 +89,68 @@ RECIPE_RESPONSE_SCHEMA = {
     },
 }
 
+def build_prompt(user_input):
+    """
+    Turn the structured user_input dict (handed over by io_manager) into a
+    prompt string. Kept short on purpose to save tokens.
+    output enforced separately via RECIPE_RESPONSE_SCHEMA
+ 
+    Expected keys in user_input:
+        ingredients          : list[dict]  e.g. [{"name": "egg", "quantity": "2", "unit": "pcs"}]
+        dietary_restrictions : list[str]
+        cuisine               : str
+        meal_type             : str
+        taste_preference      : str
+        max_cooking_time      : int (minutes)
+        servings              : int
+    """
+    ingredients_text = ", ".join(
+        f"{i.get('quantity', '')} {i.get('unit', '')} {i.get('name', '')}".strip()
+        for i in user_input.get("ingredients", [])
+    ) or "None specified"
+ 
+    restrictions_text = ", ".join(user_input.get("dietary_restrictions", [])) or "None"
+ 
+    prompt = f"""
+Generate exactly 3 different recipes using these constraints.
+ 
+Available ingredients: {ingredients_text}
+Dietary restrictions / allergies / Halal requirements: {restrictions_text}
+Cuisine preference: {user_input.get('cuisine', 'Any')}
+Meal type: {user_input.get('meal_type', 'Any')}
+Taste preference: {user_input.get('taste_preference', 'Any')}
+Maximum cooking time: {user_input.get('max_cooking_time', 'No limit')} minutes
+Servings: {user_input.get('servings', 1)}
+ 
+Rules:
+- Each recipe should use at least 3 of the listed ingredients where possible.
+- Scale ingredient quantities to the requested servings.
+- Avoid ingredients conflicting with the dietary restrictions.
+- Cooking time must not exceed the stated maximum.
+- Recipes must genuinely match the stated cuisine (authentic style, not just a Western dish with a foreign-sounding name).
+- Keep descriptions and instructions concise.
+"""
+    return prompt.strip()
+
+
 
 if __name__ == "__main__":
     print("ai_manager loaded successfully.")
     print(f"Model: {MODEL_NAME}")
     print(f"Required recipe fields: {list(REQUIRED_RECIPE_FIELDS.keys())}")
+
+    print("\n--- build_prompt() test ---")
+    sample_input = {
+        "ingredients": [
+            {"name": "egg", "quantity": "3", "unit": "pcs"},
+            {"name": "spinach", "quantity": "1", "unit": "cup"},
+            {"name": "cheddar cheese", "quantity": "50", "unit": "g"},
+        ],
+        "dietary_restrictions": ["No pork"],
+        "cuisine": "Western",
+        "meal_type": "Breakfast",
+        "taste_preference": "Savoury",
+        "max_cooking_time": 20,
+        "servings": 2,
+    }
+    print(build_prompt(sample_input))
