@@ -6,9 +6,7 @@ Responsibilities (per project spec, "must implement"):
   2. Call the AI API and parse the response.
   3. Validate the response schema - reject/retry on malformed output.
   4. Handle API failure gracefully - log and continue, NEVER crash.
-  5. Zero domain logic here - only API interaction. Filtering against
-     dietary restrictions, the ">=3 ingredients used" rule, ranking, and
-     picking the top 3 all belong in logic_manager, NOT here.
+  5. Zero domain logic here - only API interaction
 
 Only function other layers should call:
     generate_recipes(user_input: dict) -> list[dict]
