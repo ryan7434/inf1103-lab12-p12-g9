@@ -251,9 +251,10 @@ MEASUREMENT_UNITS = {
     "ml",
     "L",
     "tbsp",
+    "tsp",
     "pieces",
-    "cloves",
-    "slices"
+    "clove",
+    "slice"
 }
 
 # Combining the restriction groups
