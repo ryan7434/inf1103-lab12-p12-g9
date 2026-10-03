@@ -230,6 +230,33 @@ def parse_ai_response(raw_text):
     return parsed
 
 
+def validate_recipe_schema(recipe):
+    """
+    Check a single recipe dict has all required fields with the right
+    rough types.
+    Purely structural - does not check for anything specific
+    """
+    if not isinstance(recipe, dict):    #check if the recipe is a dict, if not return False
+        return False
+ 
+    for field, expected_type in REQUIRED_RECIPE_FIELDS.items(): #check if each required field is present in the recipe and if it is of the expected type, if not return False
+        if field not in recipe:
+            return False
+        if not isinstance(recipe[field], expected_type):
+            return False
+ 
+    if not recipe["ingredients"]:   #check if the ingredients list is empty, if it is return False
+        return False
+    for ingredient in recipe["ingredients"]:    #check if each ingredient is a dict and has a "name" key, if not return False
+        if not isinstance(ingredient, dict) or "name" not in ingredient:
+            return False
+ 
+    if not recipe["instructions"]:  #check if the instructions list is empty, if it is return False
+        return False
+ 
+    return True
+
+
 def _log_error(message):    #the first underscore in the function name indicates that this function is intended to be private and not used outside of this file
     """Append a timestamped line to the log file. Never raises."""
     try:
