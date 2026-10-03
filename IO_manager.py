@@ -252,10 +252,10 @@ NORMALISED_STAPLES = {
 }
 
 def get_unit_measurement():
-    #user to select UOM from the given options or enter a custom unit, ensuring it is not blank.
+    #user to select UOM from the given options or enter a custom unit, ensuring it contains letters only.
     while True:
         choice = choosing_options(
-            "PLease choose a unit of measurement:",
+            "Please choose a unit of measurement:",
             UNIT_OPTIONS,
             "Enter your selected unit of measurement: ",
         )
@@ -263,14 +263,12 @@ def get_unit_measurement():
         if choice != OTHER_UNIT_OPTIONS:
             return UNIT_OPTIONS[choice]
 
-        custom_unit = normalise_text(
-            input("Enter your unit of measurement: ")
-        )
+        custom_unit = " ".join(input("Enter your unit of measurement: ").lower().split())
 
-        if custom_unit:
+        if custom_unit.replace(" ", "").isalpha(): #accept only letters and spaces (reject numbers and special characters)
             return custom_unit
 
-        print("Unit of measurement must be specified.")
+        print("Unit of measurement must contain letters only, for example: cups, pieces")
 
 
 def get_quantity(unit):
@@ -363,6 +361,7 @@ def get_user_ingredients(dietary_details):
 
             ingredients.append({"name": name, "quantity": quantity, "unit": unit})
             entered_names.add(name)
+            print(f"{format_quantity(quantity)} {unit} of {name}")
 
             if len(ingredients) < 3: #prompt user to add more ingredients if less than 3 entered
                 print(f"You must enter {3 - len(ingredients)} more ingredient(s).")
