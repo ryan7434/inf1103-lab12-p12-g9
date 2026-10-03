@@ -244,6 +244,18 @@ PORK_ITEMS = {
     "pork rind",
 }
 
+#Unit Measurement that will appear in Recipe.
+MEASUREMENT_UNITS = {
+    "g",
+    "kg",
+    "ml",
+    "L",
+    "tbsp",
+    "pieces",
+    "cloves",
+    "slices"
+}
+
 # Combining the restriction groups
 VEGETARIAN_RESTRICTED_INGREDIENTS = (
     MEAT_ITEMS
