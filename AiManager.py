@@ -116,7 +116,7 @@ def build_prompt(user_input):
     restrictions_text = ", ".join(user_input.get("dietary_restrictions", [])) or "None"
  
     prompt = f"""
-Generate exactly 3 different recipes using these constraints.
+Generate exactly 5 different recipes using these constraints.
  
 Available ingredients: {ingredients_text}
 Dietary restrictions / allergies / Halal requirements: {restrictions_text}
@@ -197,6 +197,37 @@ def call_ai_api(prompt):
     except (TimeoutError, json.JSONDecodeError, OSError) as e:  #Other errors are raised when there is a timeout, the response is not valid JSON, or there is an OS error
         _log_error(f"Error calling/parsing Gemini API transport: {e}")
         return None
+
+
+def parse_ai_response(raw_text):
+    """
+    Parse raw_text as JSON
+    Returns a list of recipe dicts, or None if parsing fails
+    """
+    if not raw_text:
+        return None
+ 
+    cleaned = raw_text.strip() 
+    if cleaned.startswith("```"):   #checks if it begins witha  markdown fence
+        cleaned = cleaned.strip("`")
+        if cleaned.lower().startswith("json"):
+            cleaned = cleaned[4:]   #removes the "json" from the beginning of the string if it is present
+        cleaned = cleaned.strip()
+ 
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        _log_error(f"JSON decode failed: {e} | raw (first 200 chars): {cleaned[:200]}")
+        return None
+ 
+    if isinstance(parsed, dict):    #if the parsed object is a dict, wrap it in a list
+        parsed = [parsed]
+ 
+    if not isinstance(parsed, list):
+        _log_error("Parsed AI response was neither a list nor a dict.")
+        return None
+ 
+    return parsed
 
 
 def _log_error(message):    #the first underscore in the function name indicates that this function is intended to be private and not used outside of this file
