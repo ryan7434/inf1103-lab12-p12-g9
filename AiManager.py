@@ -33,7 +33,7 @@ MAX_RETRIES = 2
 RETRY_DELAY_SECONDS = 3          # backoff for generic failures (parse/API errors)
 RATE_LIMIT_DELAY_SECONDS = 20    # longer backoff specifically for HTTP 429
 
-MAX_OUTPUT_TOKENS = 1000         # kept low - schema enforcement means we don't
+MAX_OUTPUT_TOKENS = 1800         # kept low - schema enforcement means we don't
                                   # need extra tokens for the model to
                                   # "explain" the JSON shape.
 
@@ -203,6 +203,7 @@ def parse_ai_response(raw_text):
     """
     Parse raw_text as JSON
     Returns a list of recipe dicts, or None if parsing fails
+    checks if the overall response is a list, if not it checks if it is a dict and wraps it in a list, if not it logs an error and returns None
     """
     if not raw_text:
         return None
@@ -235,6 +236,7 @@ def validate_recipe_schema(recipe):
     Check a single recipe dict has all required fields with the right
     rough types.
     Purely structural - does not check for anything specific
+    checks if specific items are a dict
     """
     if not isinstance(recipe, dict):    #check if the recipe is a dict, if not return False
         return False
@@ -255,6 +257,57 @@ def validate_recipe_schema(recipe):
         return False
  
     return True
+
+
+def generate_recipes(user_input):
+    """
+    Main entry point called. only function other layers should call
+ 
+    Chains together: build_prompt -> call_ai_api -> parse_ai_response ->
+    validate_recipe_schema, with retries on failure and a longer backoff
+    specifically for rate limiting.
+ 
+    Returns a list of schema-valid recipe dicts. not yet filtered or
+    ranked against business rules
+ 
+    Returns an empty list (never raises) if the AI could not produce
+    valid output after all retries, or if the API failed entirely. An
+    empty list is a legitimate, expected outcome the other layers should handle
+    """
+    prompt = build_prompt(user_input)   
+ 
+    for attempt in range(1, MAX_RETRIES + 1):   #loop through the number of retries, should be 2 attempts total
+        raw_response = call_ai_api(prompt)
+ 
+        if raw_response is None:    #log an error if the API call failed and sleep for a few seconds before retrying
+            _log_error(f"Attempt {attempt}/{MAX_RETRIES}: API call failed.")
+            time.sleep(RETRY_DELAY_SECONDS)
+            continue
+ 
+        if raw_response == "RATE_LIMITED":  #log an error if the API call was rate limited and sleep for a longer period of time before retrying
+            _log_error(f"Attempt {attempt}/{MAX_RETRIES}: backing off for rate limit.")
+            time.sleep(RATE_LIMIT_DELAY_SECONDS)
+            continue
+ 
+        recipes = parse_ai_response(raw_response)
+        if recipes is None: #log an error if the response was not valid JSON and sleep for a few seconds before retrying
+            _log_error(f"Attempt {attempt}/{MAX_RETRIES}: response was not valid JSON.")
+            time.sleep(RETRY_DELAY_SECONDS)
+            continue
+ 
+        valid_recipes = [r for r in recipes if validate_recipe_schema(r)]   #filter the list of recipes to only include those that pass schema validation
+ 
+        if valid_recipes:
+            return valid_recipes
+ 
+        _log_error( #log an error if the response was valid JSON but none of the recipes passed schema validation and sleep for a few seconds before retrying
+            f"Attempt {attempt}/{MAX_RETRIES}: JSON parsed but no recipe "
+            f"passed schema validation."
+        )
+        time.sleep(RETRY_DELAY_SECONDS)
+ 
+    _log_error("All retries exhausted - returning empty recipe list.")  #log an error if all retries have been exhausted and return an empty list
+    return []
 
 
 def _log_error(message):    #the first underscore in the function name indicates that this function is intended to be private and not used outside of this file
@@ -290,17 +343,44 @@ if __name__ == "__main__":
     test_prompt = build_prompt(sample_input)
     print(test_prompt)
  
-    print("\n--- call_ai_api() test ---")
+    print("\n--- generate_recipes() end-to-end test ---")
     if not API_KEY:
         print("GEMINI_API_KEY not set - skipping live API test.")
+        print("(This is expected/fine if you're just checking syntax right now.)")
     else:
-        print("Calling Gemini API ...")
-        result = call_ai_api(test_prompt)
-        if result == "RATE_LIMITED":
-            print("Hit rate limit - try again in a minute.")
-        elif result is None:
-            print("API call failed - check ai_manager_errors.log for details.")
+        print("Calling Gemini API via generate_recipes() (uses your free-tier quota,")
+        print("possibly more than once if a retry is triggered)...")
+        recipes = generate_recipes(sample_input)
+        if not recipes:
+            print("Got an empty list - check ai_manager_errors.log for what went wrong.")
         else:
-            print("Raw response:")
-            print(result)
-
+            print(f"Got {len(recipes)} valid recipe(s):")
+            for recipe in recipes:
+                print(f"  - {recipe['recipe_name']} ({recipe['estimated_cooking_time_minutes']} min)")
+ 
+    print("\n--- parse_ai_response() offline test (no API needed) ---")
+    fake_clean_json = '[{"recipe_name": "Test Recipe", "ingredients": []}]' #valid JSON string
+    fake_fenced_json = '```json\n[{"recipe_name": "Fenced Recipe"}]\n```'   #valid JSON string with markdown fences
+    fake_garbage = "not json at all {broken"    #invalid JSON string
+    print("clean JSON  ->", parse_ai_response(fake_clean_json)) #parse the valid JSON string and print the result
+    print("fenced JSON ->", parse_ai_response(fake_fenced_json))    #parse the valid JSON string with markdown fences and print the result
+    print("garbage     ->", parse_ai_response(fake_garbage))    #parse the invalid JSON string and calls _log_error
+ 
+    print("\n--- validate_recipe_schema() offline test (no API needed) ---")
+    fake_good_recipe = {    #a valid recipe dict with all required fields and correct types
+        "recipe_name": "Spinach Cheddar Omelette",
+        "ingredients": [{"name": "egg", "quantity": "6", "unit": "pcs"}],
+        "description": "A savoury Western breakfast with no pork.",
+        "seasonings": ["salt", "pepper"],
+        "instructions": ["Whisk eggs.", "Cook in pan with spinach and cheese."],
+        "estimated_cooking_time_minutes": 15,
+        "servings": 2,
+    }
+    fake_missing_fields = {"recipe_name": "Missing everything else"}    #a recipe dict that is missing all required fields except for "recipe_name"
+    fake_empty_ingredients = {**fake_good_recipe, "ingredients": []}    #a recipe dict that has an empty ingredients list
+    fake_wrong_type = {**fake_good_recipe, "servings": "two"}   #a recipe dict that has the wrong type for the "servings" field (string instead of int/float)
+    print("good recipe              ->", validate_recipe_schema(fake_good_recipe))
+    print("missing fields           ->", validate_recipe_schema(fake_missing_fields))
+    print("empty ingredients list   ->", validate_recipe_schema(fake_empty_ingredients))
+    print("wrong type (servings)    ->", validate_recipe_schema(fake_wrong_type))
+    print("not even a dict          ->", validate_recipe_schema("just a string"))
