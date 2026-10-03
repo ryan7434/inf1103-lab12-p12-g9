@@ -14,3 +14,25 @@ def check_main_ingredient(user_preference, ai_response):
         return True
 
     return False
+
+def check_max_servings(user_preference, ai_response):
+    user_servings = user_preference["servings"]
+    ai_servings = ai_response["servings"]
+
+    if ai_servings > 5:
+        return {
+            "passed": False,
+            "warning": None
+        }
+
+    if ai_servings < user_servings:
+        return {
+            "passed": True,
+            "warning": f"This recipe can only serve {ai_servings} servings."
+        }
+
+    return {
+        "passed": True,
+        "warning": None
+    }
+
