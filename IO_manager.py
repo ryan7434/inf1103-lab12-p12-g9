@@ -1,8 +1,37 @@
+from decimal import Decimal, InvalidOperation
+
 from dictionary import (
     DIETARY_CHOICES,
     INGREDIENT_ALIASES,
+    STAPLE_INGREDIENTS,
 )
 
+UNIT_OPTIONS = {
+    "1": "tbsp",
+    "2": "tsp",
+    "3": "slice",
+    "4": "clove",
+    "5": "g",
+    "6": "kg",
+    "7": "ml",
+    "8": "L",
+    "9": "pieces",
+    "10": "Other (type your own unit)",
+}
+
+OTHER_UNIT_OPTIONS = "10"
+
+UNIT_MAXIMUM_VALUES = {
+    "tbsp": Decimal("32"), #up to 2 cups
+    "tsp": Decimal("96"),  #up to 32 tbsp/2 cups
+    "slice": Decimal("20"),
+    "clove": Decimal("30"),
+    "g": Decimal("5000"),  #5kg
+    "kg": Decimal("5"),
+    "ml": Decimal("5000"), #5L
+    "L": Decimal("5"),
+    "pieces": Decimal("30"),
+}
 
 PRIMARY_DIETARY_CHOICES = {"1", "2", "3", "4"}
 NO_RESTRICTIONS_CHOICE = "6"
@@ -12,6 +41,11 @@ CUSTOM_EXCLUSIONS_CHOICE = "5"
 def normalise_text(text):
     cleaned_text = " ".join(text.lower().split())  #Convert text to lowercase, remove extra spaces and apply ingredient aliases.
     return INGREDIENT_ALIASES.get(cleaned_text, cleaned_text)
+
+
+def format_quantity(quantity): #display quantity without unnecessary trailing zeros or decimal point.
+    text = format(quantity, "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
 
 
 def get_yes_no(prompt):
@@ -27,12 +61,24 @@ def get_yes_no(prompt):
         print("Invalid input. Please enter Y or N.")
 
 
-def category_name(choice):
-    #returns the display name of the dietary category based on the choice number
-    return DIETARY_CHOICES[choice or CUSTOM_EXCLUSIONS_CHOICE]["display_name"]
+def choosing_options(title, options, prompt="Enter your choice: "):
+    #display a menu of options and return the user's choice.
+    while True:
+        print(f"\n{title}")
 
+        for key, label in options.items():
+            print(f"{key}. {label}")
 
-## Dietary details ##
+        choice = input(f"\n{prompt}").strip()
+
+        if choice in options:
+            return choice
+
+        print(f"Invalid input. Enter a number from 1 to {len(options)}.")
+
+# ---------------
+# dietary details
+# ---------------
 
 def display_dietary_choices():
     #display the dietary menu options to the user
@@ -96,8 +142,8 @@ def get_food_exclusions(primary_choice):
     #option 5 on its own (primary_choice is None) has no automatic restrictions and user can enter up to 5 food exclusions/allergies.
     existing = (
         set() if primary_choice is None
-        else DIETARY_CHOICES[primary_choice]["restricted_ingredients"]
-    )
+        else {normalise_text(i) for i in DIETARY_CHOICES[primary_choice]["restricted_ingredients"]}
+)
 
     while True:
         text = normalise_text(
@@ -132,6 +178,11 @@ def get_food_exclusions(primary_choice):
         if error is None:
             return items
         print(error)
+
+
+def category_name(choice):
+    #returns the display name of the dietary category based on the choice number
+    return DIETARY_CHOICES[choice or CUSTOM_EXCLUSIONS_CHOICE]["display_name"]
 
 
 def confirm_dietary_details(primary_choice, custom_exclusions):
@@ -181,18 +232,152 @@ def get_dietary_details():
 
 
 def get_all_restricted_ingredients(dietary_details):
-    #returns a set of all restricted ingredients based on user's dietary choice and custom exclusions the user gave.
-    restricted_ingredients = set(dietary_details["custom_exclusions"])
+    restricted = set(dietary_details["custom_exclusions"])
     dietary_choice = dietary_details["dietary_choice"]
 
     if dietary_choice is not None:
-        restricted_ingredients.update( #if a dietary choice is selected, add the restricted ingredients
+        restricted.update(
             DIETARY_CHOICES[dietary_choice]["restricted_ingredients"]
         )
 
-    return restricted_ingredients
+    return {normalise_text(item) for item in restricted}
+
+# -----------
+# Ingredients
+# -----------
+
+NORMALISED_STAPLES = {
+    normalise_text(staple)
+    for staple in STAPLE_INGREDIENTS
+}
+
+def get_unit_measurement():
+    #user to select UOM from the given options or enter a custom unit, ensuring it is not blank.
+    while True:
+        choice = choosing_options(
+            "PLease choose a unit of measurement:",
+            UNIT_OPTIONS,
+            "Enter your selected unit of measurement: ",
+        )
+
+        if choice != OTHER_UNIT_OPTIONS:
+            return UNIT_OPTIONS[choice]
+
+        custom_unit = normalise_text(
+            input("Enter your unit of measurement: ")
+        )
+
+        if custom_unit:
+            return custom_unit
+
+        print("Unit of measurement must be specified.")
+
+
+def get_quantity(unit):
+    #user to enter a quantity for the given unit, ensuring it is a number > 0 and within the maximum allowed for that unit.
+    maximum = UNIT_MAXIMUM_VALUES.get(unit, Decimal("100"))
+
+    while True:
+        quantity_input = input("Enter quantity: ").strip()
+
+        if not quantity_input:
+            print("Quantity cannot be blank. Kindly enter a number.")
+            continue
+
+        try:
+            quantity = Decimal(quantity_input)
+        except InvalidOperation:
+            print("Invalid quantity. Kindly enter a number greater than zero.")
+            continue
+
+        if not quantity.is_finite() or quantity <= 0:
+            print("Quantity must be a number greater than zero.")
+            continue
+
+        if quantity > maximum:
+            print(
+                f"Quantity is too large. "
+                f"Maximum for {unit}: {format_quantity(maximum)}."
+            )
+            continue
+
+        return quantity
+
+
+def get_valid_ingredient(entered_available_ingredients, restricted_ingredients):
+    #prompt the user to enter an ingredient name
+    while True:
+        ingredient_name = normalise_text(input("Enter ingredient name: "))
+
+        if not ingredient_name:
+            print("Ingredient name cannot be blank.")
+
+        elif ingredient_name in entered_available_ingredients: #no duplicate ingredients allowed
+            print("You have already entered this ingredient.") 
+
+        elif ingredient_name in NORMALISED_STAPLES: #not allowed to enter staple ingredients
+            print(
+                f"'{ingredient_name}' is a basic staple"
+            )
+
+        elif ingredient_name in restricted_ingredients: #not allowed to enter ingredients from dietary restrictions or custom exclusions/allergies
+            print(
+                f"'{ingredient_name}' is not allowed under your dietary "
+                "preference or food exclusions/allergies."
+            )
+
+        else:
+            return ingredient_name
+
+
+def display_ingredients(ingredients):
+    #display the list of ingredients entered with their quantities and units.
+    print("\nIngredients entered:")
+
+    for number, ingredient in enumerate(ingredients, start=1):
+        quantity = format_quantity(ingredient["quantity"])
+
+        print(
+            f"{number}. {ingredient['name']} - "
+            f"{quantity} {ingredient['unit']}"
+        )
+
+
+def get_user_ingredients(dietary_details):
+    restricted_ingredients = get_all_restricted_ingredients(dietary_details)
+
+    while True:
+        ingredients = []
+        entered_names = set()
+
+        print("\nEnter 3 to 5 ingredients you currently have.")
+        print("Basic staples such as salt, oil, flour, and soy sauce are assumed available.")
+        print("Inputting ingredients from your dietary restrictions and exclusions/allergies will be deemed invalid.")
+
+        while len(ingredients) < 5: #accepts ingredients until the user has entered 5 or atleast 3.
+            print(f"\nIngredient {len(ingredients) + 1}") #show the user the current ingredient number they are entering
+
+            name = get_valid_ingredient(entered_names, restricted_ingredients)
+            unit = get_unit_measurement()
+            quantity = get_quantity(unit)
+
+            ingredients.append({"name": name, "quantity": quantity, "unit": unit})
+            entered_names.add(name)
+
+            if len(ingredients) < 3: #prompt user to add more ingredients if less than 3 entered
+                print(f"You must enter {3 - len(ingredients)} more ingredient(s).")
+            elif len(ingredients) < 5 and not get_yes_no(
+                "\nWould you like to add another ingredient? (Y/N): "
+            ):
+                break
+
+        display_ingredients(ingredients)
+
+        if get_yes_no("\nAre these ingredients correct? (Y/N): "):
+            return ingredients
+
+        print("\nKindly enter your ingredients again.") #if no, prompt user to re-enter ingredients
 
 if __name__ == "__main__":
-    details = get_dietary_details()
-    print("\nResult:", details)
-    print("All restricted:", get_all_restricted_ingredients(details))
+    dietary_details = get_dietary_details()
+    ingredients = get_user_ingredients(dietary_details)
