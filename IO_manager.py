@@ -377,6 +377,157 @@ def get_user_ingredients(dietary_details):
 
         print("\nKindly enter your ingredients again.") #if no, prompt user to re-enter ingredients
 
+
+# ------------------
+# Recipe preferences
+# ------------------
+
+CUISINE_OPTIONS = {
+    "1": "Chinese",
+    "2": "Korean",
+    "3": "Japanese",
+    "4": "Indian",
+    "5": "Western",
+    "6": "Any",
+}
+
+TASTE_OPTIONS = {
+    "1": "Sweet",
+    "2": "Savoury",
+    "3": "Spicy",
+    "4": "Sour",
+    "5": "No preference",
+}
+
+
+def parse_choices(text, valid_options):
+    #returns a list of unique choices from the input text, or None if invalid.
+    choices = text.replace(" ", "").split(",")
+
+    if all(c in valid_options for c in choices) and len(set(choices)) == len(choices):
+        return choices
+
+    return None
+
+def get_breakfast_preference():
+    return get_yes_no("\nDo you want a breakfast recipe? (Y/N): ")
+
+
+def get_cuisine_preference(): 
+    #choose between Chinese, Korean, Japanese, Indian, Western or Any cuisine preference.
+    return CUISINE_OPTIONS[
+        choosing_options("Choose your preferred cuisine:", CUISINE_OPTIONS)
+    ]
+
+
+def get_taste_preferences(): 
+    #choose up to 2 taste preferences or No preference (option 5) which must be selected alone.
+    while True:
+        print("\nChoose your taste preference(s):")
+
+        for number, taste in TASTE_OPTIONS.items():
+            print(f"{number}. {taste}")
+
+        print("\nSelect up to 2 options from 1 to 4.")
+        print("Option 5 must be selected alone.")
+        print("Examples: 1 | 1, 3 | 3, 4 | 5")
+
+        choices = parse_choices(input("\nKindly enter your choice(s): "), TASTE_OPTIONS)
+
+        if choices is None:
+            print("Invalid input. Enter unique options from 1 to 5.")
+        elif "5" in choices and len(choices) > 1:
+            print("Option 5, No preference, must be selected alone.")
+        elif len(choices) > 2:
+            print("You can only select a maximum of two taste preferences.")
+        else:
+            return [TASTE_OPTIONS[choice] for choice in choices]
+
+
+def get_whole_number_in_range(prompt, minimum, maximum):
+    #prompt the user to enter a whole number within a specified range, ensuring valid input.
+    while True:
+        user_input = input(prompt).strip()
+
+        if not user_input: #reject blank input and restart the loop
+            print("Input cannot be blank.")
+            continue
+
+        try:
+            value = int(user_input) #convert the text entered by the user into an integer.
+        except ValueError:
+            print("Invalid input. Please enter a whole number.")
+            continue
+
+        if not minimum <= value <= maximum:
+            print(
+                f"Invalid input. Please enter a whole number "
+                f"from {minimum} to {maximum}."
+            )
+            continue
+
+        return value
+
+
+def get_max_cooking_time():
+    #max cooking time in minutues must be a whole number ranging from 5(inclusive) to 180(inclusive)
+    return get_whole_number_in_range(
+        "\nMaximum cooking time in minutes (5-180): ", 5, 180
+    )
+
+
+def get_preferred_servings():
+    #preferred number of servings must be a whole number ranging from 1 to 5
+    return get_whole_number_in_range(
+        "\nPreferred number of servings (1-5): ", 1, 5
+    )
+
+
+def confirm_recipe_preferences(req):
+    #confirm the following recipe preferences entered by the user: cuisine, taste, time and servings.
+    print("\nPlease confirm your recipe preferences:")
+    print(f"Cuisine preference: {req['cuisine']}")
+    print(f"Taste preference(s): {', '.join(req['tastes'])}")
+    print(f"Maximum cooking time: {req['max_time']} minutes")
+    print(f"Preferred servings: {req['servings']}")
+
+    return get_yes_no("\nIs this correct? (Y/N): ")
+
+
+def collect_recipe_preferences(req):
+    #collect cuisine, taste, time and servings until the user confirms.
+    while True:
+        req["cuisine"] = get_cuisine_preference()
+        req["tastes"] = get_taste_preferences()
+        req["max_time"] = get_max_cooking_time()
+        req["servings"] = get_preferred_servings()
+
+        if confirm_recipe_preferences(req): #stop collecting preferences once user enters yes.
+            return
+
+        print("\nKindly enter your recipe preferences again.") #if user enters no, prompt them to re-enter their preferences.
+
+
+def main():
+    """Run the full recipe-preference input process."""
+    req = {}
+
+    # Get dietary details first because ingredient validation needs them.
+    req["dietary"] = get_dietary_details()
+
+    # Get the user's available ingredients.
+    req["ingredients"] = get_user_ingredients(req["dietary"])
+
+    # Ask whether the user wants a breakfast recipe.
+    req["breakfast"] = get_breakfast_preference()
+
+    # Collect cuisine, taste, cooking-time, and serving preferences.
+    collect_recipe_preferences(req)
+
+    return req
+
 if __name__ == "__main__":
-    dietary_details = get_dietary_details()
-    ingredients = get_user_ingredients(dietary_details)
+    request = main()
+
+    print("\nFinal recipe request:")
+    print(request)
