@@ -508,26 +508,106 @@ def collect_recipe_preferences(req):
         print("\nKindly enter your recipe preferences again.") #if user enters no, prompt them to re-enter their preferences.
 
 
+# -------------------
+# Summary and editing
+# -------------------
+
+EDIT_OPTIONS = {
+    "1": "Dietary category / foods to avoid",
+    "2": "Main ingredients",
+    "3": "Breakfast preference",
+    "4": "Cuisine preference",
+    "5": "Taste preferences",
+    "6": "Maximum cooking time",
+    "7": "Preferred servings",
+    "8": "Restart everything",
+}
+
+
+def display_recipe_request_summary(req):
+    #display a full summary of whatever the user chose/entered
+    dietary = req["dietary"]
+    exclusions = dietary["custom_exclusions"]
+    ingredient_names = [i["name"] for i in req["ingredients"]]
+
+    print("\nPlease review your recipe request:")
+    print(f"Dietary category: {category_name(dietary['dietary_choice'])}")
+    print(f"Foods to avoid: {', '.join(exclusions) if exclusions else 'None'}")
+    print(f"Main ingredients: {', '.join(ingredient_names)}")
+    print(f"Breakfast preferred: {'Yes' if req['breakfast'] else 'No'}")
+    print(f"Cuisine preference: {req['cuisine']}")
+    print(f"Taste preferences: {', '.join(req['tastes']).lower()}")
+    print(f"Maximum cooking time: {req['max_time']} minutes")
+    print(f"Preferred servings: {req['servings']}")
+
+
+def confirm_generate_recommendations():
+    return get_yes_no("\nGenerate recipe recommendations? (Y/N): ")
+
+
+def get_edit_choice():
+    #if user chooses no, then prompts user to selection which section they would like to edit
+    return choosing_options("Which section would you like to change?", EDIT_OPTIONS)
+
+
+SIMPLE_EDITS = {  
+    #maps the edit choice to the corresponding key in the request dictionary and the function to call for that section.
+    "3": ("breakfast", get_breakfast_preference),
+    "4": ("cuisine", get_cuisine_preference),
+    "5": ("tastes", get_taste_preferences),
+    "6": ("max_time", get_max_cooking_time),
+    "7": ("servings", get_preferred_servings),
+}
+
+
+def edit_recipe_request(choice, req):
+    if choice == "1":
+    #changing dietary details also changes which ingredients are allowed,
+    #so the user must re-enter their exclusions and ingredient list.
+        print(
+            "\nDo take note that changing your dietary details will reset your food exclusions "
+            "and ingredients."
+        )
+        print("Kindly re-enter your dietary details again.")
+
+        req["dietary"] = get_dietary_details()
+        req["ingredients"] = get_user_ingredients(req["dietary"])
+
+    elif choice == "2":
+        #re-enter only the ingredient list while current dietary details remains intact
+        req["ingredients"] = get_user_ingredients(req["dietary"])
+
+    elif choice == "8":
+        #restart the entire process staring from dietary preferences
+        return False
+
+    else:
+        key, ask = SIMPLE_EDITS[choice]
+        req[key] = ask() #get the new value and save it in the request dictionary
+
+    return True
+
+
 def main():
-    """Run the full recipe-preference input process."""
-    req = {}
+    while True:
+        req = {}
+        req["dietary"] = get_dietary_details()
+        req["ingredients"] = get_user_ingredients(req["dietary"])
+        req["breakfast"] = get_breakfast_preference()
 
-    # Get dietary details first because ingredient validation needs them.
-    req["dietary"] = get_dietary_details()
+        collect_recipe_preferences(req)
 
-    # Get the user's available ingredients.
-    req["ingredients"] = get_user_ingredients(req["dietary"])
+        while True:
+            display_recipe_request_summary(req)
 
-    # Ask whether the user wants a breakfast recipe.
-    req["breakfast"] = get_breakfast_preference()
+            if confirm_generate_recommendations():
+                print("\nProceeding to the API layer...")
+                return req
 
-    # Collect cuisine, taste, cooking-time, and serving preferences.
-    collect_recipe_preferences(req)
+            if not edit_recipe_request(get_edit_choice(), req):
+                print("\nKindly restart your recipe request from the beginning.")
+                break
 
-    return req
 
 if __name__ == "__main__":
     request = main()
-
-    print("\nFinal recipe request:")
-    print(request)
