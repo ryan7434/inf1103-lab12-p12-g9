@@ -33,6 +33,43 @@ UNIT_MAXIMUM_VALUES = {
     "pieces": Decimal("30"),
 }
 
+CUISINE_OPTIONS = {
+    "1": "Chinese",
+    "2": "Korean",
+    "3": "Japanese",
+    "4": "Indian",
+    "5": "Western",
+    "6": "Any",
+}
+
+TASTE_OPTIONS = {
+    "1": "Sweet",
+    "2": "Savoury",
+    "3": "Spicy",
+    "4": "Sour",
+    "5": "No preference",
+}
+
+EDIT_DIETARY = "1"
+EDIT_INGREDIENTS = "2"
+EDIT_BREAKFAST = "3"
+EDIT_CUISINE = "4"
+EDIT_TASTES = "5"
+EDIT_MAX_TIME = "6"
+EDIT_SERVINGS = "7"
+EDIT_RESTART = "8"
+
+EDIT_OPTIONS = {
+    EDIT_DIETARY: "Dietary category / foods to avoid",
+    EDIT_INGREDIENTS: "Main ingredients",
+    EDIT_BREAKFAST: "Breakfast preference",
+    EDIT_CUISINE: "Cuisine preference",
+    EDIT_TASTES: "Taste preferences",
+    EDIT_MAX_TIME: "Maximum cooking time",
+    EDIT_SERVINGS: "Preferred servings",
+    EDIT_RESTART: "Restart everything",
+}
+
 PRIMARY_DIETARY_CHOICES = {"1", "2", "3", "4"}
 NO_RESTRICTIONS_CHOICE = "6"
 CUSTOM_EXCLUSIONS_CHOICE = "5"
@@ -375,30 +412,12 @@ def get_user_ingredients(dietary_details):
         if get_yes_no("\nAre these ingredients correct? (Y/N): "):
             return ingredients
 
-        print("\nKindly enter your ingredients again.") #if no, prompt user to re-enter ingredients
+        print("\nKindly re-enter your ingredients again.") #if no, prompt user to re-enter ingredients
 
 
 # ------------------
 # Recipe preferences
 # ------------------
-
-CUISINE_OPTIONS = {
-    "1": "Chinese",
-    "2": "Korean",
-    "3": "Japanese",
-    "4": "Indian",
-    "5": "Western",
-    "6": "Any",
-}
-
-TASTE_OPTIONS = {
-    "1": "Sweet",
-    "2": "Savoury",
-    "3": "Spicy",
-    "4": "Sour",
-    "5": "No preference",
-}
-
 
 def parse_choices(text, valid_options):
     #returns a list of unique choices from the input text, or None if invalid.
@@ -484,8 +503,9 @@ def get_preferred_servings():
 
 
 def confirm_recipe_preferences(req):
-    #confirm the following recipe preferences entered by the user: cuisine, taste, time and servings.
+    #confirm the following recipe preferences entered by the user: breakfast,cuisine, taste, time and servings.
     print("\nPlease confirm your recipe preferences:")
+    print(f"Breakfast preferred: {'Yes' if req['breakfast'] else 'No'}")
     print(f"Cuisine preference: {req['cuisine']}")
     print(f"Taste preference(s): {', '.join(req['tastes'])}")
     print(f"Maximum cooking time: {req['max_time']} minutes")
@@ -495,8 +515,9 @@ def confirm_recipe_preferences(req):
 
 
 def collect_recipe_preferences(req):
-    #collect cuisine, taste, time and servings until the user confirms.
+    #collect breakfast, cuisine, taste, time and servings until the user confirms.
     while True:
+        req["breakfast"] = get_breakfast_preference()
         req["cuisine"] = get_cuisine_preference()
         req["tastes"] = get_taste_preferences()
         req["max_time"] = get_max_cooking_time()
@@ -505,38 +526,29 @@ def collect_recipe_preferences(req):
         if confirm_recipe_preferences(req): #stop collecting preferences once user enters yes.
             return
 
-        print("\nKindly enter your recipe preferences again.") #if user enters no, prompt them to re-enter their preferences.
+        print("\nKindly re-enter your recipe preferences again.") #if user enters no, prompt them to re-enter their preferences.
 
 
 # -------------------
 # Summary and editing
 # -------------------
 
-EDIT_OPTIONS = {
-    "1": "Dietary category / foods to avoid",
-    "2": "Main ingredients",
-    "3": "Breakfast preference",
-    "4": "Cuisine preference",
-    "5": "Taste preferences",
-    "6": "Maximum cooking time",
-    "7": "Preferred servings",
-    "8": "Restart everything",
-}
-
-
 def display_recipe_request_summary(req):
-    #display a full summary of whatever the user chose/entered
+    #display a full summary of whatever the user has entered
     dietary = req["dietary"]
     exclusions = dietary["custom_exclusions"]
-    ingredient_names = [i["name"] for i in req["ingredients"]]
+    ingredient_list = ", ".join(
+        f"{i['name']} ({format_quantity(i['quantity'])} {i['unit']})"
+        for i in req["ingredients"]
+    )
 
     print("\nPlease review your recipe request:")
     print(f"Dietary category: {category_name(dietary['dietary_choice'])}")
     print(f"Foods to avoid: {', '.join(exclusions) if exclusions else 'None'}")
-    print(f"Main ingredients: {', '.join(ingredient_names)}")
+    print(f"Main ingredients: {ingredient_list}")
     print(f"Breakfast preferred: {'Yes' if req['breakfast'] else 'No'}")
     print(f"Cuisine preference: {req['cuisine']}")
-    print(f"Taste preferences: {', '.join(req['tastes']).lower()}")
+    print(f"Taste preferences: {', '.join(req['tastes'])}")
     print(f"Maximum cooking time: {req['max_time']} minutes")
     print(f"Preferred servings: {req['servings']}")
 
@@ -550,22 +562,22 @@ def get_edit_choice():
     return choosing_options("Which section would you like to change?", EDIT_OPTIONS)
 
 
-SIMPLE_EDITS = {  
-    #maps the edit choice to the corresponding key in the request dictionary and the function to call for that section.
-    "3": ("breakfast", get_breakfast_preference),
-    "4": ("cuisine", get_cuisine_preference),
-    "5": ("tastes", get_taste_preferences),
-    "6": ("max_time", get_max_cooking_time),
-    "7": ("servings", get_preferred_servings),
+SIMPLE_EDITS = {
+    #only requires a single function call to get the new value for the selected section
+    EDIT_BREAKFAST: ("breakfast", get_breakfast_preference),
+    EDIT_CUISINE: ("cuisine", get_cuisine_preference),
+    EDIT_TASTES: ("tastes", get_taste_preferences),
+    EDIT_MAX_TIME: ("max_time", get_max_cooking_time),
+    EDIT_SERVINGS: ("servings", get_preferred_servings),
 }
 
 
 def edit_recipe_request(choice, req):
-    if choice == "1":
-    #changing dietary details also changes which ingredients are allowed,
-    #so the user must re-enter their exclusions and ingredient list.
+    if choice == EDIT_DIETARY:
+        #changing dietary details also changes which ingredients are allowed,
+        #so the user must re-enter their exclusions and ingredient list.
         print(
-            "\nDo take note that changing your dietary details will reset your food exclusions "
+            "\nChanging dietary details will reset your food exclusions "
             "and ingredients."
         )
         print("Kindly re-enter your dietary details again.")
@@ -573,12 +585,12 @@ def edit_recipe_request(choice, req):
         req["dietary"] = get_dietary_details()
         req["ingredients"] = get_user_ingredients(req["dietary"])
 
-    elif choice == "2":
+    elif choice == EDIT_INGREDIENTS:
         #re-enter only the ingredient list while current dietary details remains intact
         req["ingredients"] = get_user_ingredients(req["dietary"])
 
-    elif choice == "8":
-        #restart the entire process staring from dietary preferences
+    elif choice == EDIT_RESTART:
+        #restart the entire process from the beginning, starting with dietary preferences
         return False
 
     else:
@@ -593,7 +605,6 @@ def main():
         req = {}
         req["dietary"] = get_dietary_details()
         req["ingredients"] = get_user_ingredients(req["dietary"])
-        req["breakfast"] = get_breakfast_preference()
 
         collect_recipe_preferences(req)
 
