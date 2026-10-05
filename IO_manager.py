@@ -352,7 +352,7 @@ def get_valid_ingredient(entered_available_ingredients, restricted_ingredients):
 
         elif ingredient_name in NORMALISED_STAPLES: #not allowed to enter staple ingredients
             print(
-                f"'{ingredient_name}' is a basic staple"
+                f"'{ingredient_name}' is a basic staple and assumed available."
             )
 
         elif ingredient_name in restricted_ingredients: #not allowed to enter ingredients from dietary restrictions or custom exclusions/allergies
@@ -472,11 +472,11 @@ def get_whole_number_in_range(prompt, minimum, maximum):
             print("Input cannot be blank.")
             continue
 
-        try:
-            value = int(user_input) #convert the text entered by the user into an integer.
-        except ValueError:
-            print("Invalid input. Please enter a whole number.")
+        if not user_input.isdecimal(): #digits only (rejects "1_0", "3.5", "-2" and text)
+            print("Invalid input. Please enter a whole number using digits only.")
             continue
+
+        value = int(user_input)
 
         if not minimum <= value <= maximum:
             print(
