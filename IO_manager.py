@@ -288,6 +288,7 @@ NORMALISED_STAPLES = {
     for staple in STAPLE_INGREDIENTS
 }
 
+
 def get_unit_measurement():
     #user to select UOM from the given options or enter a custom unit, ensuring it contains letters only.
     while True:
@@ -427,6 +428,7 @@ def parse_choices(text, valid_options):
         return choices
 
     return None
+
 
 def get_breakfast_preference():
     return get_yes_no("\nDo you want a breakfast recipe? (Y/N): ")
