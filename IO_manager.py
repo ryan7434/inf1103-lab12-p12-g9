@@ -29,7 +29,7 @@ UNIT_MAXIMUM_VALUES = {
     "g": Decimal("5000"),  #5kg
     "kg": Decimal("5"),
     "ml": Decimal("5000"), #5L
-    "L": Decimal("5"),
+    "l": Decimal("5"),
     "pieces": Decimal("30"),
 }
 
@@ -310,7 +310,7 @@ def get_unit_measurement():
 
 def get_quantity(unit):
     #user to enter a quantity for the given unit, ensuring it is a number > 0 and within the maximum allowed for that unit.
-    maximum = UNIT_MAXIMUM_VALUES.get(unit, Decimal("100"))
+    maximum = UNIT_MAXIMUM_VALUES.get(unit.lower(), Decimal("100"))
 
     while True:
         quantity_input = input("Enter quantity: ").strip()
@@ -590,8 +590,8 @@ def edit_recipe_request(choice, req):
         req["ingredients"] = get_user_ingredients(req["dietary"])
 
     elif choice == EDIT_RESTART:
-        #restart the entire process from the beginning, starting with dietary preferences
-        return False
+        #confirm with the user if they are sure they want to restart the entire process
+        return not get_yes_no("\nThis will discard everything you had entered. Are you sure you wish to restart? (Y/N): ")
 
     else:
         key, ask = SIMPLE_EDITS[choice]
