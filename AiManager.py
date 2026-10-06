@@ -1,11 +1,11 @@
 """
 io_manager -> ai_manager -> logic_manager -> data_manager
 
-Responsibilities (per project spec, "must implement"):
+Responsibilities (per project spec):
   1. Build a prompt from the input record.
   2. Call the AI API and parse the response.
   3. Validate the response schema - reject/retry on malformed output.
-  4. Handle API failure gracefully - log and continue, NEVER crash.
+  4. Handle API failure gracefully - log and continue, never crash.
   5. Zero domain logic here - only API interaction
 
 Only function other layers should call:
@@ -33,9 +33,9 @@ RATE_LIMIT_DELAY_SECONDS = 20    # longer backoff specifically for HTTP 429
 
 MAX_OUTPUT_TOKENS = 1800         # kept low - schema enforcement means we don't
                                   # need extra tokens for the model to
-                                  # "explain" the JSON shape.
+                                  # explain the JSON shape.
 
-THINKING_BUDGET = 0
+THINKING_BUDGET = 0     
 
 LOG_FILE = "ai_manager_errors.log"
 
