@@ -34,20 +34,29 @@ def validate_dietary_restriction(user_preference, ai_response):
 
 
 # other exclusions (e.g allergens) validation
-def validate_other_exclusions(user_input, ai_response):
-    exclusions = user_input["other_exclusions"]
+def validate_other_exclusions(user_preference, ai_response):
+    exclusions = user_preference["other_exclusions"]
     ingredients = ai_response["ingredients"]
 
     for exclusion in exclusions:
         exclusion = exclusion.lower().rstrip("s")
 
         for ingredient in ingredients:
-            ingredient = ingredient.lower().rstrip("s")
+            ingredient_name = ingredient["name"].lower().rstrip("s")
 
-            if exclusion in ingredient:
-                return False
+            if exclusion in ingredient_name:
+                return {
+                    "passed": False,
+                    "warning": (
+                        f"The recipe contains an excluded ingredient: "
+                        f"{ingredient['name']}."
+                    )
+                }
 
-    return True
+    return {
+        "passed": True,
+        "warning": None
+    }
 
 # breakfast preference scoring (soft preference, not a hard validation)
 def score_breakfast_preference(user_input, ai_response):
