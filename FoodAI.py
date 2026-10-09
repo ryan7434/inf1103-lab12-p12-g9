@@ -90,3 +90,25 @@ def build_logic_manager_user_preference(req):
         ],
         "servings": req["servings"],
     }
+
+def _derive_dietary_information(recipe):
+    """
+    logic_manager expects ai_response["dietary_information"] with
+    "halal_suitable"/"contains_peanuts" string flags, but ai_manager's
+    schema never asks the model to self-report this information. Derive it from the recipe's ingredients and seasonings.
+    """
+    names = [
+        _normalise_ingredient_name(ingredient.get("name", ""))
+        for ingredient in recipe.get("ingredients", [])
+    ] + [
+        _normalise_ingredient_name(seasoning)
+        for seasoning in recipe.get("seasonings", [])
+    ]
+
+    halal_violation = any(name in HALAL_RESTRICTED_INGREDIENTS for name in names)
+    contains_peanuts = any("peanut" in name for name in names)
+
+    return {
+        "halal_suitable": "False" if halal_violation else "True",
+        "contains_peanuts": "True" if contains_peanuts else "False",
+    }
