@@ -18,29 +18,32 @@ def validate_cooking_time(user_preference, ai_response):
 
 
 # dietary restrictions validation
-def validate_dietary_restriction(user_input, ai_response):
+def validate_dietary_restriction(user_preference, ai_response):
     restricted_ingredients = ai_response["restricted_ingredients"]
 
     if restricted_ingredients:
-        return False
+        return {
+            "passed": False,
+            "warning": "The recipe contains ingredients that violate your dietary restrictions."
+        }
+
+    return {
+        "passed": True,
+        "warning": None
+    }
+
+# breakfast preference scoring (soft preference, not a hard validation)
+def score_breakfast_preference(user_input, ai_response):
+    wants_breakfast = user_input["breakfast_preferred"]
+    is_breakfast_recipe = ai_response["is_breakfast"]
+
+    if not wants_breakfast:
+        return 0  # no preference stated, no bonus either way
+
+    if is_breakfast_recipe:
+        return 1  # matches preference, add to ranking score
     else:
-        return True
-
-# other exclusions (e.g allergens) validation
-def validate_other_exclusions(user_input, ai_response):
-    exclusions = user_input["other_exclusions"]
-    ingredients = ai_response["ingredients"]
-
-    for exclusion in exclusions:
-        exclusion = exclusion.lower().rstrip("s")
-
-        for ingredient in ingredients:
-            ingredient = ingredient.lower().rstrip("s")
-
-            if exclusion in ingredient:
-                return False
-
-    return True
+        return 0  # doesn't match, but not rejected
 
 # breakfast preference scoring (soft preference, not a hard validation)
 def score_breakfast_preference(user_input, ai_response):
