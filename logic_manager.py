@@ -165,7 +165,7 @@ def evaluate_recipe(user_preferences, ai_response):
     )
 
     #A dict is always truthy even when passed=False, so a recipe that actually failed the cooking-time or 
-    # halal/peanut dietary check could still be returned as "ACCEPT"
+    # halal/peanut dietary check could still be returned as "ACCEPT" if the other checks passed
     if (
             ingredients_ok
             and servings_ok["passed"]
