@@ -32,32 +32,6 @@ def validate_dietary_restriction(user_preference, ai_response):
         "warning": None
     }
 
-
-# other exclusions (e.g allergens) validation
-def validate_other_exclusions(user_preference, ai_response):
-    exclusions = user_preference["other_exclusions"]
-    ingredients = ai_response["ingredients"]
-
-    for exclusion in exclusions:
-        exclusion = exclusion.lower().rstrip("s")
-
-        for ingredient in ingredients:
-            ingredient_name = ingredient["name"].lower().rstrip("s")
-
-            if exclusion in ingredient_name:
-                return {
-                    "passed": False,
-                    "warning": (
-                        f"The recipe contains an excluded ingredient: "
-                        f"{ingredient['name']}."
-                    )
-                }
-
-    return {
-        "passed": True,
-        "warning": None
-    }
-
 # breakfast preference scoring (soft preference, not a hard validation)
 def score_breakfast_preference(user_input, ai_response):
     wants_breakfast = user_input["breakfast_preferred"]
@@ -111,3 +85,68 @@ def check_max_servings(user_preference, ai_response):
         "warning": None
     }
 
+def check_measurements(user_preference, ai_response):
+    warnings = []
+
+    user_ingredients = user_preference["available_ingredients"]
+
+    for recipe_item in ai_response["ingredients"]:
+        recipe_name = recipe_item["name"].lower()
+        recipe_amount = recipe_item["amount"]
+        recipe_unit = recipe_item["unit"].lower()
+
+        for user_item in user_ingredients:
+            user_name = user_item["name"].lower()
+
+            if recipe_name == user_name:
+                user_amount = user_item["amount"]
+                user_unit = user_item["unit"].lower()
+
+                # Only compare amounts when the units are the same
+                if recipe_unit == user_unit:
+                    if recipe_amount > user_amount:
+                        warnings.append(
+                            f"The recipe requires {recipe_amount} {recipe_unit} "
+                            f"of {recipe_name}, but you only have "
+                            f"{user_amount} {user_unit}."
+                        )
+
+                break
+
+    return {
+        "passed": True,
+        "warning": "; ".join(warnings) if warnings else None
+    }
+
+def evaluate_recipe(user_preferences, ai_response):
+
+    ingredients_ok = check_main_ingredient(
+        user_preferences,
+        ai_response
+    )
+
+    servings_ok = check_max_servings(
+        user_preferences,
+        ai_response
+    )
+
+    measurements_ok = check_measurements(
+        user_preferences, 
+        ai_response
+    )
+
+    if ingredients_ok and servings_ok["passed"] and measurements_ok["passed"]:
+        return {
+            "status": "ACCEPT",
+            "reason": "Recipe meets all requirements.",
+            "warning": servings_ok["warning"] or measurements_ok["warning"]
+        }
+
+    return {
+        "status": "REJECT",
+        "reason": "Recipe does not meet all requirements.",
+        "warning": servings_ok["warning"]
+    }
+
+result = evaluate_recipe(user_response, ai_response)
+print(result)
