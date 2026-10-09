@@ -18,13 +18,19 @@ def validate_cooking_time(user_preference, ai_response):
 
 
 # dietary restrictions validation
-def validate_dietary_restriction(user_input, ai_response):
+def validate_dietary_restriction(user_preference, ai_response):
     restricted_ingredients = ai_response["restricted_ingredients"]
 
     if restricted_ingredients:
-        return False
-    else:
-        return True
+        return {
+            "passed": False,
+            "warning": "The recipe contains ingredients that violate your dietary restrictions."
+        }
+
+    return {
+        "passed": True,
+        "warning": None
+    }
 
 
 # other exclusions (e.g allergens) validation
