@@ -143,3 +143,37 @@ def build_logic_manager_ai_response(recipe, requested_meal_type):
         "servings": recipe.get("servings", 0),
         "ingredients": ingredients,
     }
+
+# recipe + context -> data_manager
+def build_data_manager_record(record_id, recipe, req, ai_input):
+
+    #Convert one accepted recipe into the flat dict shape data_manager.save_processed_record() expects for CSV storage.
+
+    user_ingredient_names = {
+        _normalise_ingredient_name(ingredient["name"]) for ingredient in req["ingredients"]
+    }
+    recipe_ingredient_names = [
+        _normalise_ingredient_name(ingredient.get("name", ""))
+        for ingredient in recipe.get("ingredients", [])
+    ]
+
+    used = [name for name in recipe_ingredient_names if name in user_ingredient_names]
+    missing = [name for name in recipe_ingredient_names if name not in user_ingredient_names]
+
+    return {
+        "record_id": record_id,
+        "timestamp": datetime.now().isoformat(),
+        "dish_name": recipe.get("recipe_name", ""),
+        "matched_ingredients_count": len(used),
+        "used_ingredients": used,
+        "missing_ingredients": missing,
+        "seasonings_suggested": recipe.get("seasonings", []),
+        "cooking_time_mins": recipe.get("estimated_cooking_time_minutes", 0),
+        "servings": recipe.get("servings", 0),
+        "cuisine": ai_input["cuisine"],
+        "meal_type": ai_input["meal_type"],
+        "taste_preference": ai_input["taste_preference"],
+        "dietary_restrictions": ai_input["dietary_restrictions"],
+        "ai_insight": recipe.get("description", ""),
+        "instructions": recipe.get("instructions", []),
+    }
