@@ -3,6 +3,8 @@ from AI_output_validation import (
     validate_dietary_restriction,
     validate_other_exclusions,
     score_breakfast_preference,
+    check_main_ingredient,
+    check_max_servings
 )
 
 
@@ -117,3 +119,45 @@ def test_breakfast_preferred_and_matches():
     user_input = {"breakfast_preferred": True}
     ai_response = {"is_breakfast": False}
     assert score_breakfast_preference(user_input, ai_response) == 1
+
+def test_main_ingredient_valid():
+    user_input = {
+        "available_ingredients": [
+            {"name": "chicken", "amount": 200, "unit": "g"},
+            {"name": "carrot", "amount": 2, "unit": "pieces"},
+            {"name": "cabbage", "amount": 100, "unit": "g"},
+            {"name": "egg", "amount": 3, "unit": "pieces"},
+            {"name": "mushroom", "amount": 150, "unit": "g"}
+        ]
+    }
+
+    ai_response = {
+        "main_ingredients_used": [
+            "chicken",
+            "carrot",
+            "cabbage",
+            "egg",
+            "mushroom"
+        ]
+    }
+
+    assert check_main_ingredient(user_input, ai_response) == True
+
+
+def test_main_ingredient_invalid():
+    user_input = {
+        "available_ingredients": [
+            {"name": "chicken", "amount": 200, "unit": "g"},
+            {"name": "carrot", "amount": 2, "unit": "pieces"},
+            {"name": "cabbage", "amount": 100, "unit": "g"}
+        ]
+    }
+
+    ai_response = {
+        "main_ingredients_used": [
+            "chicken",
+            "carrot"
+        ]
+    }
+
+    assert check_main_ingredient(user_input, ai_response) == False
