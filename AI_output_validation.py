@@ -120,6 +120,15 @@ def check_measurements(user_preference, ai_response):
 
 def evaluate_recipe(user_preferences, ai_response):
 
+    cooking_time_ok = validate_cooking_time(
+        user_preferences,
+        ai_response
+    )
+    dietary_ok = validate_dietary_restriction(
+        user_preferences,
+        ai_response
+    )
+
     ingredients_ok = check_main_ingredient(
         user_preferences,
         ai_response
@@ -135,17 +144,17 @@ def evaluate_recipe(user_preferences, ai_response):
         ai_response
     )
 
-    if ingredients_ok and servings_ok["passed"] and measurements_ok["passed"]:
+    if ingredients_ok and servings_ok["passed"] and measurements_ok["passed"] and cooking_time_ok and dietary_ok:
         return {
             "status": "ACCEPT",
             "reason": "Recipe meets all requirements.",
-            "warning": servings_ok["warning"] or measurements_ok["warning"]
+            "warning": servings_ok["warning"] or measurements_ok["warning"] or cooking_time_ok["warning"] or dietary_ok["warning"]
         }
 
     return {
         "status": "REJECT",
         "reason": "Recipe does not meet all requirements.",
-        "warning": servings_ok["warning"]
+        "warning": servings_ok["warning"] or measurements_ok["warning"] or cooking_time_ok["warning"] or dietary_ok["warning"]
     }
 
 result = evaluate_recipe(user_response, ai_response)
