@@ -1,7 +1,5 @@
 """
-io_manager -> ai_manager -> logic_manager -> data_manager
-
-Responsibilities (per project spec):
+Responsibilities:
   1. Build a prompt from the input record.
   2. Call the AI API and parse the response.
   3. Validate the response schema - reject/retry on malformed output.
@@ -265,12 +263,8 @@ def generate_recipes(user_input):
     validate_recipe_schema, with retries on failure and a longer backoff
     specifically for rate limiting.
  
-    Returns a list of schema-valid recipe dicts. not yet filtered or
-    ranked against business rules
- 
     Returns an empty list (never raises) if the AI could not produce
-    valid output after all retries, or if the API failed entirely. An
-    empty list is a legitimate, expected outcome the other layers should handle
+    valid output after all retries, or if the API failed entirely
     """
     prompt = build_prompt(user_input)   
  
