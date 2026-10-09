@@ -68,3 +68,25 @@ def resolve_dietary_keys(req):
         keys.append("no peanuts")
 
     return keys
+
+def build_logic_manager_user_preference(req):
+    """
+    Convert io_manager's req dict into the user_preference shape
+    logic_manager's validation functions expect.
+    """
+    return {
+        "maximum_cooking_time": req["max_time"],
+        "dietary_restrictions": resolve_dietary_keys(req),
+        "breakfast_preferred": req["breakfast"],
+        # logic_manager does numeric comparisons (recipe_amount > user_amount),
+        # so Decimal is converted to float here rather than passed through
+        "available_ingredients": [
+            {
+                "name": ingredient["name"],
+                "amount": float(ingredient["quantity"]),
+                "unit": ingredient["unit"],
+            }
+            for ingredient in req["ingredients"]
+        ],
+        "servings": req["servings"],
+    }
