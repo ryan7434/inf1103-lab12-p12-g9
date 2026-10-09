@@ -70,3 +70,22 @@ def score_breakfast_preference(user_input, ai_response):
         return 1  # matches preference, add to ranking score
     else:
         return 0  # doesn't match, but not rejected
+
+# checks recipe uses at least 3 of the user's ingredient input
+def check_main_ingredient(user_preference, ai_response):
+    user_ingredient = user_preference["available_ingredients"]
+    ai_ingredient = ai_response["main_ingredients_used"]
+
+    match_count = 0
+
+    for ingredient in user_ingredient:
+          ingredient_name = ingredient["name"]
+          if ingredient_name.lower() in [
+              item.lower() for item in ai_ingredient
+    ]:
+            match_count += 1
+
+    if match_count >= 3:
+        return True
+
+    return False
