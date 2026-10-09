@@ -1,12 +1,20 @@
 # maximum cooking time validation
-def validate_cooking_time(user_input, ai_response):
-    max_time = user_input["max_cooking_time"]
-    ai_time = ai_response["estimated_cooking_time"]
+def validate_cooking_time(user_preference, ai_response):
+    max_time = user_preference["maximum_cooking_time"]
+    ai_time = ai_response["cooking_time_minutes"]
 
-    if ai_time <= max_time:
-        return "Cooking time is valid"
-    else:
-        return "Cooking time exceeds the limit"
+    if ai_time > max_time:
+        return {
+            "passed": False,
+            "warning": (
+                f"The recipe takes {ai_time} minutes, which exceeds your {max_time}-minute limit."
+            )
+        }
+        
+    return {
+        "passed": True,
+        "warning": None
+    }
 
 
 # dietary restrictions validation
