@@ -19,13 +19,23 @@ def validate_cooking_time(user_preference, ai_response):
 
 # dietary restrictions validation
 def validate_dietary_restriction(user_preference, ai_response):
-    restricted_ingredients = ai_response["restricted_ingredients"]
+    dietary_restrictions = user_preference["dietary_restrictions"]
+    dietary_information = ai_response["dietary_information"]
 
-    if restricted_ingredients:
-        return {
-            "passed": False,
-            "warning": "The recipe contains ingredients that violate your dietary restrictions."
-        }
+    for restriction in dietary_restrictions:
+        if restriction == "halal":
+            if dietary_information["halal_suitable"] != "True":
+                return {
+                    "passed": False,
+                    "warning": "The recipe may not be halal."
+                }
+
+        elif restriction == "no peanuts":
+            if dietary_information["contains_peanuts"] != "False":
+                return {
+                    "passed": False,
+                    "warning": "The recipe contains peanuts."
+                }
 
     return {
         "passed": True,
