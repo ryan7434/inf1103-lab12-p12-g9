@@ -1,0 +1,38 @@
+{
+  "available_ingredients": [
+    {
+        "name": "chicken",
+        "amount": 200,
+        "unit": "g"
+    },
+    {
+        "name": "carrot",
+        "amount": 100,
+        "unit": "g"
+    },
+    {
+        "name": "cabbage",
+        "amount": 200,
+        "unit": "g"
+    },
+    {
+        "name": "egg",
+        "amount": 4,
+        "unit": "pieces"
+    },
+    {
+        "name": "mushroom",
+        "amount": 150,
+        "unit": "g"
+    }
+  ],
+  "dietary_restrictions": [
+    "halal",
+    "no peanuts"
+  ],
+  "cuisine": "Chinese",
+  "meal_type": "Dinner",
+  "taste_preference": "Savoury",
+  "maximum_cooking_time": 30,
+  "servings": 3
+}
