@@ -45,19 +45,7 @@ def score_breakfast_preference(user_input, ai_response):
     else:
         return 0  # doesn't match, but not rejected
 
-# breakfast preference scoring (soft preference, not a hard validation)
-def score_breakfast_preference(user_input, ai_response):
-    wants_breakfast = user_input["breakfast_preferred"]
-    is_breakfast_recipe = ai_response["is_breakfast"]
-
-    if not wants_breakfast:
-        return 0  # no preference stated, no bonus either way
-
-    if is_breakfast_recipe:
-        return 1  # matches preference, add to ranking score
-    else:
-        return 0  # doesn't match, but not rejected
-
+# checks recipe uses at least 3 of the user's ingredient input
 def check_main_ingredient(user_preference, ai_response):
     user_ingredient = user_preference["available_ingredients"]
     ai_ingredient = ai_response["main_ingredients_used"]
@@ -76,6 +64,7 @@ def check_main_ingredient(user_preference, ai_response):
 
     return False
 
+# checks recipe for max 5 servings
 def check_max_servings(user_preference, ai_response):
     user_servings = user_preference["servings"]
     ai_servings = ai_response["servings"]
