@@ -112,3 +112,34 @@ def _derive_dietary_information(recipe):
         "halal_suitable": "False" if halal_violation else "True",
         "contains_peanuts": "True" if contains_peanuts else "False",
     }
+
+def build_logic_manager_ai_response(recipe, requested_meal_type):
+    """
+    Convert one ai_manager recipe dict into the ai_response shape
+    logic_manager's validation functions expect.
+    """
+    ingredients = []
+    for ingredient in recipe.get("ingredients", []):
+        try:
+            # ai_manager's schema defines quantity as a STRING 
+            # logic_manager needs a number to do recipe_amount > user_amount comparisons.
+            amount = float(ingredient.get("quantity", 0))
+        except (TypeError, ValueError):
+            amount = 0.0
+        ingredients.append({
+            "name": ingredient.get("name", ""),
+            "amount": amount,
+            "unit": ingredient.get("unit", ""),
+        })
+
+    return {
+        "cooking_time_minutes": recipe.get("estimated_cooking_time_minutes", 0),
+        "dietary_information": _derive_dietary_information(recipe),
+        # ai_manager doesn't report whether a recipe "is" breakfast - but we already told it which meal_type to generate for, so a recipe coming back from a "Breakfast" request is treated as breakfast.
+        "is_breakfast": requested_meal_type == "Breakfast",
+        "main_ingredients_used": [
+            ingredient.get("name", "") for ingredient in recipe.get("ingredients", [])
+        ],
+        "servings": recipe.get("servings", 0),
+        "ingredients": ingredients,
+    }
