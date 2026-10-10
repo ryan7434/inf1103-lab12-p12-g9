@@ -1,5 +1,4 @@
 from datetime import datetime
-
 import IO_manager
 import AiManager
 import logic_manager
@@ -180,12 +179,12 @@ def build_data_manager_record(record_id, recipe, req, ai_input):
 
 def main():
     # Step 1: collect and confirm the user's request.
-    request = io_manager.main()
+    request = IO_manager.main()
  
     # Step 2: translate it into ai_manager's expected shape, then
     # generate candidate recipes via the AI layer.
     ai_input = build_ai_manager_input(request)
-    recipes = ai_manager.generate_recipes(ai_input)
+    recipes = AiManager.generate_recipes(ai_input)
  
     if not recipes:
         print(
