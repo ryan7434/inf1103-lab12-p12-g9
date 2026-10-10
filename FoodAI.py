@@ -177,3 +177,89 @@ def build_data_manager_record(record_id, recipe, req, ai_input):
         "ai_insight": recipe.get("description", ""),
         "instructions": recipe.get("instructions", []),
     }
+
+def main():
+    # Step 1: collect and confirm the user's request.
+    request = io_manager.main()
+ 
+    # Step 2: translate it into ai_manager's expected shape, then
+    # generate candidate recipes via the AI layer.
+    ai_input = build_ai_manager_input(request)
+    recipes = ai_manager.generate_recipes(ai_input)
+ 
+    if not recipes:
+        print(
+            "\nSorry, we couldn't generate any recipes right now. "
+            "Please check ai_manager_errors.log or try again shortly."
+        )
+        return
+ 
+    # Step 3: validate each candidate recipe against the user's hard
+    # requirements (cooking time, dietary/halal safety, ingredient
+    # overlap, servings, measurements) via logic_manager.
+    user_preference = build_logic_manager_user_preference(request)
+ 
+    accepted = []
+    for recipe in recipes:
+        ai_response = build_logic_manager_ai_response(recipe, ai_input["meal_type"])
+        evaluation = logic_manager.evaluate_recipe(user_preference, ai_response)
+        if evaluation["status"] == "ACCEPT":
+            accepted.append((recipe, evaluation))
+ 
+    if not accepted:
+        print(
+            "\nNone of the generated recipes passed validation (cooking "
+            "time, dietary safety, ingredient match, servings, or "
+            "measurements). Try relaxing a preference and running again."
+        )
+        return
+ 
+    # Step 4: persist each accepted recipe via data_manager.
+    existing_records = data_manager.load_all_records()
+    next_id = len(existing_records) + 1
+ 
+    print(f"\n{len(accepted)} of {len(recipes)} generated recipe(s) passed validation:\n")
+    for recipe, evaluation in accepted:
+        record = build_data_manager_record(next_id, recipe, request, ai_input)
+        saved = data_manager.save_processed_record(record)
+ 
+        print("=" * 60)
+        print(
+            f"{recipe.get('recipe_name')} "
+            f"({recipe.get('estimated_cooking_time_minutes')} min, "
+            f"serves {recipe.get('servings')})"
+        )
+        print("=" * 60)
+ 
+        if recipe.get("description"):
+            print(f"\n{recipe['description']}")
+ 
+        ingredients = recipe.get("ingredients", [])
+        if ingredients:
+            print("\nIngredients:")
+            for ingredient in ingredients:
+                print(f"  - {ingredient.get('quantity', '')} {ingredient.get('unit', '')} {ingredient.get('name', '')}".rstrip())
+ 
+        seasonings = recipe.get("seasonings", [])
+        if seasonings:
+            print("\nSeasonings:")
+            for seasoning in seasonings:
+                print(f"  - {seasoning}")
+ 
+        instructions = recipe.get("instructions", [])
+        if instructions:
+            print("\nInstructions:")
+            for step_number, step in enumerate(instructions, start=1):
+                print(f"  {step_number}. {step}")
+ 
+        if evaluation["warning"]:
+            print(f"\nNote: {evaluation['warning']}")
+        if not saved:
+            print("\n(Warning: could not save this recipe to recipes_history.csv)")
+ 
+        print()
+        next_id += 1
+ 
+ 
+if __name__ == "__main__":
+    main()
