@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-=======
 from dictionary import MEASUREMENT_UNITS
 import json
 
@@ -10,7 +8,6 @@ import json
 # with open('test_script_user_input.json', 'r') as f:
     # user_response = json.load(f)
 
->>>>>>> main
 # maximum cooking time validation
 def validate_cooking_time(user_preference, ai_response):
     max_time = user_preference["maximum_cooking_time"]
@@ -29,10 +26,6 @@ def validate_cooking_time(user_preference, ai_response):
         "warning": None
     }
 
-<<<<<<< HEAD
-
-=======
->>>>>>> main
 # dietary restrictions validation
 def validate_dietary_restriction(user_preference, ai_response):
     dietary_restrictions = user_preference["dietary_restrictions"]
@@ -192,7 +185,7 @@ def evaluate_recipe(user_preferences, ai_response):
         "warning": servings_ok["warning"] or measurements_ok["warning"] or cooking_time_ok["warning"] or dietary_ok["warning"]
     }
 
-<<<<<<< HEAD
+
 if __name__ == "__main__":
     with open("test_script_user_input.json", "r") as f:
         user_response = json.load(f)
@@ -201,4 +194,4 @@ if __name__ == "__main__":
 
     result = evaluate_recipe(user_response, ai_response)
     print(result)
->>>>>>> main
+
