@@ -1,11 +1,9 @@
 """
-io_manager -> ai_manager -> logic_manager -> data_manager
-
-Responsibilities (per project spec, "must implement"):
+Responsibilities:
   1. Build a prompt from the input record.
   2. Call the AI API and parse the response.
   3. Validate the response schema - reject/retry on malformed output.
-  4. Handle API failure gracefully - log and continue, NEVER crash.
+  4. Handle API failure gracefully - log and continue, never crash.
   5. Zero domain logic here - only API interaction
 
 Only function other layers should call:
@@ -33,9 +31,9 @@ RATE_LIMIT_DELAY_SECONDS = 20    # longer backoff specifically for HTTP 429
 
 MAX_OUTPUT_TOKENS = 1800         # kept low - schema enforcement means we don't
                                   # need extra tokens for the model to
-                                  # "explain" the JSON shape.
+                                  # explain the JSON shape.
 
-THINKING_BUDGET = 0
+THINKING_BUDGET = 0     
 
 LOG_FILE = "ai_manager_errors.log"
 
@@ -265,12 +263,8 @@ def generate_recipes(user_input):
     validate_recipe_schema, with retries on failure and a longer backoff
     specifically for rate limiting.
  
-    Returns a list of schema-valid recipe dicts. not yet filtered or
-    ranked against business rules
- 
     Returns an empty list (never raises) if the AI could not produce
-    valid output after all retries, or if the API failed entirely. An
-    empty list is a legitimate, expected outcome the other layers should handle
+    valid output after all retries, or if the API failed entirely
     """
     prompt = build_prompt(user_input)   
  
