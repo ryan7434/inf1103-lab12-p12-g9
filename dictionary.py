@@ -1,5 +1,5 @@
 STAPLE_INGREDIENTS = {
-    # Common Seasonings
+    #common Seasonings
     "salt",
     "sea salt",
     "table salt",
@@ -9,7 +9,7 @@ STAPLE_INGREDIENTS = {
     "sugar",
     "msg",
 
-    # Common Cooking Oils
+    #common Cooking Oils
     "oil",
     "cooking oil",
     "vegetable oil",
@@ -19,7 +19,7 @@ STAPLE_INGREDIENTS = {
     "extra virgin olive oil",
     "sesame oil",
 
-    # Common sauces and condiments
+    #common sauces and condiments
     "soy sauce",
     "light soy sauce",
     "dark soy sauce",
@@ -33,7 +33,7 @@ STAPLE_INGREDIENTS = {
     "hot sauce",
     "chili sauce",
 
-    # Common dried herbs and spices
+    #common dried herbs and spices
     "garlic powder",
     "onion powder",
     "chili powder",
@@ -50,7 +50,7 @@ STAPLE_INGREDIENTS = {
     "thyme",
     "bay leaves",
 
-    # Common baking and thickening ingredients
+    #common baking and thickening ingredients
     "flour",
     "all-purpose flour",
     "plain flour",
@@ -61,7 +61,7 @@ STAPLE_INGREDIENTS = {
 }
 
 
-# Meat items
+#meat items
 MEAT_ITEMS = {
     "beef",
     "minced beef",
@@ -106,7 +106,7 @@ MEAT_ITEMS = {
     "smoked duck", 
 }
 
-# Fish and seafood items
+#fish and seafood items
 FISH_AND_SEAFOOD_ITEMS = {
     "fish fillet",
     "salmon",
@@ -137,7 +137,7 @@ FISH_AND_SEAFOOD_ITEMS = {
     "seafood stock",
 }
 
-# Items containing animal products used in cooking.
+#items containing animal products used in cooking.
 ANIMAL_DERIVED_ITEMS = {
     "gelatin",
     "gelatine",
@@ -151,7 +151,7 @@ ANIMAL_DERIVED_ITEMS = {
     "animal stock",
 }
 
-# Egg
+#egg
 EGG_ITEMS = {
     "egg",
     "egg white",
@@ -165,7 +165,7 @@ EGG_ITEMS = {
     "century egg",
 }
 
-# Dairy products.
+#dairy products.
 DAIRY_ITEMS = {
     "milk",
     "whole milk",
@@ -200,14 +200,14 @@ DAIRY_ITEMS = {
     "whey",
 }
 
-# Other items avoided by vegans.
+#other items avoided by vegans.
 OTHER_ITEMS = {
     "honey",
     "honeycomb",
     "royal jelly",
 }
 
-# Alcohol
+#alcohol
 ALCOHOL_ITEMS = {
     "wine",
     "red wine",
@@ -220,7 +220,7 @@ ALCOHOL_ITEMS = {
     "mirin",
 }
 
-# Pork-items kept seperately from Meat_items for halal dietary restrictions.
+#pork-items kept seperately from Meat_items for halal dietary restrictions.
 PORK_ITEMS = {
     "pork",
     "pork belly",
@@ -242,6 +242,79 @@ PORK_ITEMS = {
     "pork fat",
     "pork skin",
     "pork rind",
+}
+
+#UOM that will appear in Recipe.
+MEASUREMENT_UNITS = {
+    "g",
+    "kg",
+    "ml",
+    "L",
+    "tbsp",
+    "tsp",
+    "pieces",
+    "clove",
+    "slice"
+}
+
+INGREDIENT_ALIASES = {
+    "eggs": "egg",
+    "egg whites": "egg white",
+    "egg yolks": "egg yolk",
+    "salted eggs": "salted egg",
+    "quail eggs": "quail egg",
+    "duck eggs": "duck egg",
+    "century eggs": "century egg",
+
+    #common meat cuts and poultry
+    "beef steaks": "beef steak",
+    "pork bellies": "pork belly",
+    "pork chops": "pork chop",
+    "pork rib": "pork ribs",
+    "pork sausages": "pork sausage",
+    "lamb chops": "lamb chop",
+    "chicken breasts": "chicken breast",
+    "chicken thighs": "chicken thigh",
+    "chicken wings": "chicken wing",
+    "chicken drumsticks": "chicken drumstick",
+    "turkey breasts": "turkey breast",
+    "chinese sausages": "chinese sausage",
+    "smoked ducks": "smoked duck",
+
+    #common seafood
+    "fish": "fish",
+    "fish fillets": "fish fillet",
+    "sardines": "sardine",
+    "anchovies": "anchovy",
+    "prawns": "prawn",
+    "shrimps": "shrimp",
+    "crabs": "crab",
+    "lobsters": "lobster",
+    "squids": "squid",
+    "clams": "clam",
+    "mussels": "mussel",
+    "oysters": "oyster",
+    "scallops": "scallop",
+
+    #animal-derived ingredients
+    "gelatins": "gelatin",
+    "gelatines": "gelatine",
+    "pork fats": "pork fat",
+    "pork skins": "pork skin",
+    "pork rinds": "pork rind",
+    "chicken fats": "chicken fat",
+    "duck fats": "duck fat",
+
+    #vegan-restricted animal products
+    "honeycombs": "honeycomb",
+    "royal jellies": "royal jelly",
+
+    #frequently typed pantry-item variants
+    "bay leaf": "bay leaves",
+    "chili flake": "chili flakes",
+    "chilli flake": "chilli flakes",
+    "all purpose flour": "all-purpose flour",
+    "corn starch": "cornstarch",
 }
 
 # Combining the restriction groups
@@ -270,40 +343,40 @@ HALAL_RESTRICTED_INGREDIENTS = (
     }
 )
 
-# Maps each dietary-menu option to its identifier, display text and set of restricted ingredients.
+#maps each dietary-menu option to its identifier, display text and set of restricted ingredients.
 DIETARY_CHOICES = {
     "1": {
         "key": "halal",
         "display_name": "Halal preference",
-        # Halal preference: filters known pork ingredients, alcohol, and other non-halal ingredients.
+        #halal preference: filters known pork ingredients, alcohol, and other non-halal ingredients.
         "restricted_ingredients": HALAL_RESTRICTED_INGREDIENTS,
     },
 
     "2": {
         "key": "vegetarian",
         "display_name": "Vegetarian (Able to consume eggs and dairy products)",
-        # Vegetarian option: eggs and dairy are allowed however meat, fish, seafood and animal derived ingredients are excluded 
+        #vegetarian option: eggs and dairy are allowed however meat, fish, seafood and animal derived ingredients are excluded 
         "restricted_ingredients": VEGETARIAN_RESTRICTED_INGREDIENTS,
     },
 
     "3": {
         "key": "vegan",
         "display_name": "Vegan",
-        # Vegan option: all vegetarian-restricted ingredients including eggs, dairy and others are excluded.
+        #vegan option: all vegetarian-restricted ingredients including eggs, dairy and others are excluded.
         "restricted_ingredients": VEGAN_RESTRICTED_INGREDIENTS,
     },
 
     "4": {
         "key": "lactose_intolerant",
         "display_name": "Lactose intolerant",
-        # Lactose intolerant: excludes all dairy products.
+        #lactose intolerant: excludes all dairy products.
         "restricted_ingredients": LACTOSE_INTOLERANT_RESTRICTED_INGREDIENTS,
     },
 
     "5": {
         "key": "other_exclusions",
         "display_name": "Other food exclusions/allergies (not listed above)",
-        # Will allow the user to enter specific food exclusions/allergies manually.
+        #will allow the user to enter specific food exclusions/allergies manually.
         "restricted_ingredients": set(),
     },
 
