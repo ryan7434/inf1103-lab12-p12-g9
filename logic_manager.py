@@ -1,3 +1,16 @@
+<<<<<<< HEAD
+=======
+from dictionary import MEASUREMENT_UNITS
+import json
+
+# Load the AI response from the test script
+# with open('test_script_AI.json', 'r') as f:
+    # ai_response = json.load(f)
+
+# with open('test_script_user_input.json', 'r') as f:
+    # user_response = json.load(f)
+
+>>>>>>> main
 # maximum cooking time validation
 def validate_cooking_time(user_preference, ai_response):
     max_time = user_preference["maximum_cooking_time"]
@@ -16,7 +29,10 @@ def validate_cooking_time(user_preference, ai_response):
         "warning": None
     }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> main
 # dietary restrictions validation
 def validate_dietary_restriction(user_preference, ai_response):
     dietary_restrictions = user_preference["dietary_restrictions"]
@@ -155,8 +171,16 @@ def evaluate_recipe(user_preferences, ai_response):
         ai_response
     )
 
-    if ingredients_ok and servings_ok["passed"] and measurements_ok["passed"] and cooking_time_ok and dietary_ok:
-        return {
+    #A dict is always truthy even when passed=False, so a recipe that actually failed the cooking-time or 
+    # halal/peanut dietary check could still be returned as "ACCEPT" if the other checks passed
+    if (
+            ingredients_ok
+            and servings_ok["passed"]
+            and measurements_ok["passed"]
+            and cooking_time_ok["passed"]
+            and dietary_ok["passed"]
+        ):
+            return {
             "status": "ACCEPT",
             "reason": "Recipe meets all requirements.",
             "warning": servings_ok["warning"] or measurements_ok["warning"] or cooking_time_ok["warning"] or dietary_ok["warning"]
@@ -168,5 +192,13 @@ def evaluate_recipe(user_preferences, ai_response):
         "warning": servings_ok["warning"] or measurements_ok["warning"] or cooking_time_ok["warning"] or dietary_ok["warning"]
     }
 
-result = evaluate_recipe(user_response, ai_response)
-print(result)
+<<<<<<< HEAD
+if __name__ == "__main__":
+    with open("test_script_user_input.json", "r") as f:
+        user_response = json.load(f)
+    with open("test_script_AI.json", "r") as f:
+        ai_response = json.load(f)
+
+    result = evaluate_recipe(user_response, ai_response)
+    print(result)
+>>>>>>> main
