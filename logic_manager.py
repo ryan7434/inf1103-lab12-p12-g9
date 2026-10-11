@@ -1,4 +1,4 @@
-from dictionary import MEASUREMENT_UNITS
+from dictionary import MEASUREMENT_UNITS, INGREDIENT_ALIASES
 import json
 
 # Load the AI response from the test script
@@ -27,29 +27,51 @@ def validate_cooking_time(user_preference, ai_response):
     }
 
 # dietary restrictions validation
+def _is_nonempty_str(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
 def validate_dietary_restriction(user_preference, ai_response):
-    dietary_restrictions = user_preference["dietary_restrictions"]
-    dietary_information = ai_response["dietary_information"]
+    """Check recipe ingredients and seasonings against all exclusions."""
 
-    for restriction in dietary_restrictions:
-        if restriction == "halal":
-            if dietary_information["halal_suitable"] != "True":
-                return {
-                    "passed": False,
-                    "warning": "The recipe may not be halal."
-                }
+    def normalise(name):
+        cleaned = " ".join(name.lower().split())
+        return INGREDIENT_ALIASES.get(cleaned, cleaned)
 
-        elif restriction == "no peanuts":
-            if dietary_information["contains_peanuts"] != "False":
-                return {
-                    "passed": False,
-                    "warning": "The recipe contains peanuts."
-                }
+    restricted = user_preference.get("restricted_ingredients")
+    ingredients = ai_response.get("ingredients")
+    seasonings = ai_response.get("seasonings")
 
-    return {
-        "passed": True,
-        "warning": None
-    }
+    # Do not silently approve a recipe when dietary data is malformed.
+    if not (
+        isinstance(restricted, list)
+        and isinstance(ingredients, list)
+        and isinstance(seasonings, list)
+        and all(map(_is_nonempty_str, restricted))
+        and all(map(_is_nonempty_str, seasonings))
+        and all(
+            isinstance(i, dict) and _is_nonempty_str(i.get("name"))
+            for i in ingredients
+        )
+    ):
+        return {
+            "passed": False,
+            "warning": "Dietary validation failed: missing or malformed "
+                       "ingredient data.",
+        }
+
+    recipe_names = {normalise(i["name"]) for i in ingredients}
+    recipe_names |= {normalise(s) for s in seasonings}
+    conflicts = sorted(recipe_names & {normalise(r) for r in restricted})
+
+    if conflicts:
+        return {
+            "passed": False,
+            "warning": "Recipe includes restricted ingredients: "
+                       + ", ".join(conflicts) + ".",
+        }
+
+    return {"passed": True, "warning": None}
 
 # breakfast preference scoring (soft preference, not a hard validation)
 def score_breakfast_preference(user_input, ai_response):

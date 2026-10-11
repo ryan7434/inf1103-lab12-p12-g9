@@ -10,6 +10,7 @@ from dictionary import (
     INGREDIENT_ALIASES,
 )
 
+
 # io_manager -> ai_manager
 def build_ai_manager_input(req):
     """
@@ -31,6 +32,7 @@ def build_ai_manager_input(req):
         for ingredient in req["ingredients"]
     ]
 
+
     return {
         "ingredients": ingredients,
         "dietary_restrictions": restricted_ingredients,
@@ -42,12 +44,14 @@ def build_ai_manager_input(req):
         "servings": req["servings"],
     }
 
+
 # io_manager/ai_manager -> logic_manager
 def _normalise_ingredient_name(name):
     """Same normalisation io_manager applies: lowercase, collapse spaces,
     resolve through the alias table, so e.g. 'Eggs' and 'egg' compare equal."""
     cleaned = " ".join(str(name).lower().split())
     return INGREDIENT_ALIASES.get(cleaned, cleaned)
+
 
 def resolve_dietary_keys(req):
     """
@@ -68,6 +72,7 @@ def resolve_dietary_keys(req):
 
     return keys
 
+
 def build_logic_manager_user_preference(req):
     """
     Convert io_manager's req dict into the user_preference shape
@@ -75,10 +80,15 @@ def build_logic_manager_user_preference(req):
     """
     return {
         "maximum_cooking_time": req["max_time"],
-        "dietary_restrictions": resolve_dietary_keys(req),
+
+        #full category restrictions plus custom exclusions.
+        "restricted_ingredients": sorted(
+            IO_manager.get_all_restricted_ingredients(req["dietary"])
+        ),
+
         "breakfast_preferred": req["breakfast"],
-        # logic_manager does numeric comparisons (recipe_amount > user_amount),
-        # so Decimal is converted to float here rather than passed through
+        #logic_manager does numeric comparisons (recipe_amount > user_amount),
+        #decimal is converted to float here rather than passed through
         "available_ingredients": [
             {
                 "name": ingredient["name"],
@@ -89,6 +99,7 @@ def build_logic_manager_user_preference(req):
         ],
         "servings": req["servings"],
     }
+
 
 def _derive_dietary_information(recipe):
     """
@@ -112,24 +123,43 @@ def _derive_dietary_information(recipe):
         "contains_peanuts": "True" if contains_peanuts else "False",
     }
 
+
+def _to_float(value, default=0.0):
+    #ai_manager's schema defines quantity as a string;
+    #logic_manager needs a number for recipe_amount > user_amount comparisons.
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def build_logic_manager_ai_response(recipe, requested_meal_type):
     """
     Convert one ai_manager recipe dict into the ai_response shape
     logic_manager's validation functions expect.
     """
-    ingredients = []
-    for ingredient in recipe.get("ingredients", []):
-        try:
-            # ai_manager's schema defines quantity as a STRING 
-            # logic_manager needs a number to do recipe_amount > user_amount comparisons.
-            amount = float(ingredient.get("quantity", 0))
-        except (TypeError, ValueError):
-            amount = 0.0
-        ingredients.append({
-            "name": ingredient.get("name", ""),
-            "amount": amount,
-            "unit": ingredient.get("unit", ""),
-        })
+    raw = recipe.get("ingredients", [])
+
+    return {
+        "cooking_time_minutes": recipe.get("estimated_cooking_time_minutes", 0),
+        "dietary_information": _derive_dietary_information(recipe),
+        #reflects the requested meal type, not an independent check
+        #of whether the generated recipe is breakfast.
+        "is_breakfast": requested_meal_type == "Breakfast",
+        "main_ingredients_used": [i.get("name", "") for i in raw],
+        "servings": recipe.get("servings", 0),
+        "ingredients": [
+            {
+                "name": i.get("name", ""),
+                "amount": _to_float(i.get("quantity", 0)),
+                "unit": i.get("unit", ""),
+            }
+            for i in raw
+        ],
+        #allow the dietary validator to check seasonings too.
+        "seasonings": recipe.get("seasonings", []),
+    }
+
 
     return {
         "cooking_time_minutes": recipe.get("estimated_cooking_time_minutes", 0),
@@ -142,6 +172,7 @@ def build_logic_manager_ai_response(recipe, requested_meal_type):
         "servings": recipe.get("servings", 0),
         "ingredients": ingredients,
     }
+
 
 def build_data_manager_record(record_id, recipe, req, ai_input):
     """
@@ -176,6 +207,7 @@ def build_data_manager_record(record_id, recipe, req, ai_input):
         "ai_insight": recipe.get("description", ""),
         "instructions": recipe.get("instructions", []),
     }
+
 
 def main():
     # Step 1: collect and confirm the user's request.
