@@ -10,6 +10,8 @@ from dictionary import (
     INGREDIENT_ALIASES,
 )
 
+from fractions import Fraction
+
 
 # io_manager -> ai_manager
 def build_ai_manager_input(req):
@@ -127,13 +129,15 @@ def _derive_dietary_information(recipe):
     }
 
 
-def _to_float(value, default=0.0):
-    #ai_manager's schema defines quantity as a string;
-    #logic_manager needs a number for recipe_amount > user_amount comparisons.
+def _to_float(value):
+    #parse a positive quantity: "2", "1.5" or "1/2" and raises ValueError for any invalid results
     try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+        amount = float(Fraction(value))
+        if amount > 0 and not isinstance(value, bool):
+            return amount
+    except (TypeError, ValueError, ZeroDivisionError, OverflowError):
+        pass
+    raise ValueError(f"Invalid quantity: {value!r}")
 
 
 def build_logic_manager_ai_response(recipe, requested_meal_type):
@@ -144,7 +148,7 @@ def build_logic_manager_ai_response(recipe, requested_meal_type):
     ingredients = [
         {
             "name": _normalise_ingredient_name(i.get("name", "")),
-            "amount": _to_float(i.get("quantity", 0)),
+            "amount": _to_float(i.get("quantity")),
             "unit": i.get("unit", ""),
         }
         for i in recipe.get("ingredients", [])
@@ -222,29 +226,46 @@ def main():
     user_preference = build_logic_manager_user_preference(request)
  
     accepted = []
+
     for recipe in recipes:
-        ai_response = build_logic_manager_ai_response(recipe, ai_input["meal_type"])
-        evaluation = logic_manager.evaluate_recipe(user_preference, ai_response)
+        recipe_name = recipe.get("recipe_name", "Unnamed recipe")
+
+        # Convert the AI recipe into the logic manager's expected format.
+        # Skip the recipe if its ingredient quantities cannot be parsed.
+        try:
+            ai_response = build_logic_manager_ai_response(
+                recipe,
+                ai_input["meal_type"],
+            )
+        except ValueError as error:
+            print(
+                f"\nSkipping '{recipe_name}' because its ingredient "
+                f"quantities are invalid: {error}"
+            )
+            continue
+
+        # Check the recipe against the user's preferences and ingredients.
+        evaluation = logic_manager.evaluate_recipe(
+            user_preference,
+            ai_response,
+        )
+
         if evaluation["status"] == "ACCEPT":
             accepted.append((recipe, evaluation))
- 
+
     if not accepted:
-        print(
-            "\nNone of the generated recipes passed validation (cooking "
-            "time, dietary safety, ingredient match, servings, or "
-            "measurements). Try relaxing a preference and running again."
-        )
+        print("\nNo recipes passed validation.")
         return
- 
+    
     # Step 4: persist each accepted recipe via data_manager.
     existing_records = data_manager.load_all_records()
     next_id = len(existing_records) + 1
- 
+
     print(f"\n{len(accepted)} of {len(recipes)} generated recipe(s) passed validation:\n")
     for recipe, evaluation in accepted:
         record = build_data_manager_record(next_id, recipe, request, ai_input)
         saved = data_manager.save_processed_record(record)
- 
+
         print("=" * 60)
         print(
             f"{recipe.get('recipe_name')} "
@@ -252,28 +273,32 @@ def main():
             f"serves {recipe.get('servings')})"
         )
         print("=" * 60)
- 
+
         if recipe.get("description"):
             print(f"\n{recipe['description']}")
- 
+
         ingredients = recipe.get("ingredients", [])
         if ingredients:
             print("\nIngredients:")
             for ingredient in ingredients:
-                print(f"  - {ingredient.get('quantity', '')} {ingredient.get('unit', '')} {ingredient.get('name', '')}".rstrip())
- 
+                print(
+                    f"  - {ingredient.get('quantity', '')} "
+                    f"{ingredient.get('unit', '')} "
+                    f"{ingredient.get('name', '')}".rstrip()
+                )
+
         seasonings = recipe.get("seasonings", [])
         if seasonings:
             print("\nSeasonings:")
             for seasoning in seasonings:
                 print(f"  - {seasoning}")
- 
+
         instructions = recipe.get("instructions", [])
         if instructions:
             print("\nInstructions:")
             for step_number, step in enumerate(instructions, start=1):
                 print(f"  {step_number}. {step}")
- 
+
         if evaluation["warning"]:
             print(f"\nNote: {evaluation['warning']}")
         if not saved:
@@ -281,7 +306,7 @@ def main():
  
         print()
         next_id += 1
- 
- 
+
+
 if __name__ == "__main__":
     main()
