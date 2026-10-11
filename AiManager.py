@@ -114,6 +114,16 @@ Meal type: {user_input.get('meal_type', 'Any')}
 Taste preference: {user_input.get('taste_preference', 'Any')}
 Maximum cooking time: {user_input.get('max_cooking_time', 'No limit')} minutes
 Servings: {user_input.get('servings', 1)}
+
+Ingredient quantity rules:
+- Ingredient quantities must be positive numbers or fractions.
+- Keep quantity and unit separate.
+- For ingredients listed by the user, use the exact unit supplied
+  for that ingredient, including custom units. Do not convert it
+  or change its spelling.
+- For additional ingredients, use these units:
+  g, kg, ml, L, tbsp, tsp, pieces, clove, slice.
+- Do not use vague quantities such as "a pinch", "a handful" in structured ingredient quantity fields.
  
 Rules:
 - Each recipe should use at least 3 of the listed ingredients where possible.
