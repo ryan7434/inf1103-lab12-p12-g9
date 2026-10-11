@@ -1,14 +1,5 @@
 from dictionary import INGREDIENT_ALIASES
-#import json
 
-# Load the AI response from the test script
-# with open('test_script_AI.json', 'r') as f:
-    # ai_response = json.load(f)
-
-# with open('test_script_user_input.json', 'r') as f:
-    # user_response = json.load(f)
-
-# maximum cooking time validation
 def validate_cooking_time(user_preference, ai_response):
     max_time = user_preference["maximum_cooking_time"]
     ai_time = ai_response["cooking_time_minutes"]
@@ -261,14 +252,3 @@ def evaluate_recipe(user_preferences, ai_response):
         "reason": "Recipe does not meet all requirements.",
         "warning": combined_warning
     }
-
-
-#if __name__ == "__main__":
-#    with open("test_script_user_input.json", "r") as f:
-#       user_response = json.load(f)
-#   with open("test_script_AI.json", "r") as f:
-#        ai_response = json.load(f)
-
-#    result = evaluate_recipe(user_response, ai_response)
-#    print(result)
-
