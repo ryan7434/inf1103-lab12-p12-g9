@@ -1,5 +1,5 @@
 from dictionary import INGREDIENT_ALIASES
-import json
+#import json
 
 # Load the AI response from the test script
 # with open('test_script_AI.json', 'r') as f:
@@ -263,12 +263,12 @@ def evaluate_recipe(user_preferences, ai_response):
     }
 
 
-if __name__ == "__main__":
-    with open("test_script_user_input.json", "r") as f:
-        user_response = json.load(f)
-    with open("test_script_AI.json", "r") as f:
-        ai_response = json.load(f)
+#if __name__ == "__main__":
+#    with open("test_script_user_input.json", "r") as f:
+#       user_response = json.load(f)
+#   with open("test_script_AI.json", "r") as f:
+#        ai_response = json.load(f)
 
-    result = evaluate_recipe(user_response, ai_response)
-    print(result)
+#    result = evaluate_recipe(user_response, ai_response)
+#    print(result)
 
