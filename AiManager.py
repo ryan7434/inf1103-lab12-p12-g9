@@ -239,22 +239,37 @@ def validate_recipe_schema(recipe):
     """
     if not isinstance(recipe, dict):    #check if the recipe is a dict, if not return False
         return False
- 
+
     for field, expected_type in REQUIRED_RECIPE_FIELDS.items(): #check if each required field is present in the recipe and if it is of the expected type, if not return False
         if field not in recipe:
             return False
         if not isinstance(recipe[field], expected_type):
             return False
- 
+
     if not recipe["ingredients"]:   #check if the ingredients list is empty, if it is return False
         return False
     for ingredient in recipe["ingredients"]:    #check if each ingredient is a dict and has a "name" key, if not return False
         if not isinstance(ingredient, dict) or "name" not in ingredient:
             return False
- 
+
+        for field in ("name", "quantity", "unit"):
+            value = ingredient.get(field)
+            if not isinstance(value, str):
+                return False
+            if not value.strip():
+                return False
+
     if not recipe["instructions"]:  #check if the instructions list is empty, if it is return False
         return False
- 
+
+    for step in recipe["instructions"]:
+        if not isinstance(step, str) or not step.strip():
+            return False
+
+    for seasoning in recipe["seasonings"]:
+        if not isinstance(seasoning, str) or not seasoning.strip():
+            return False
+
     return True
 
 

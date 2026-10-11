@@ -228,6 +228,18 @@ def main():
     accepted = []
 
     for recipe in recipes:
+        if not AiManager.validate_recipe_schema(recipe):
+            recipe_name = (
+                recipe.get("recipe_name", "Unnamed recipe")
+                if isinstance(recipe, dict)
+                else "Unnamed recipe"
+            )
+            print(
+                f"\nSkipping '{recipe_name}' because its recipe "
+                "data is malformed."
+            )
+            continue
+
         recipe_name = recipe.get("recipe_name", "Unnamed recipe")
 
         # Convert the AI recipe into the logic manager's expected format.
