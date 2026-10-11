@@ -1,4 +1,4 @@
-from dictionary import MEASUREMENT_UNITS, INGREDIENT_ALIASES
+from dictionary import INGREDIENT_ALIASES
 import json
 
 # Load the AI response from the test script
