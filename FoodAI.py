@@ -75,8 +75,8 @@ def resolve_dietary_keys(req):
 
 def build_logic_manager_user_preference(req):
     """
-    Convert io_manager's req dict into the user_preference shape
-    logic_manager's validation functions expect.
+    Convert the IO manager's request into the format expected
+    by the logic manager.
     """
     return {
         "maximum_cooking_time": req["max_time"],
@@ -91,12 +91,15 @@ def build_logic_manager_user_preference(req):
         #decimal is converted to float here rather than passed through
         "available_ingredients": [
             {
-                "name": ingredient["name"],
+                "name": _normalise_ingredient_name(
+                    ingredient["name"]
+                ),
                 "amount": float(ingredient["quantity"]),
                 "unit": ingredient["unit"],
             }
             for ingredient in req["ingredients"]
         ],
+
         "servings": req["servings"],
     }
 
@@ -138,7 +141,14 @@ def build_logic_manager_ai_response(recipe, requested_meal_type):
     Convert one ai_manager recipe dict into the ai_response shape
     logic_manager's validation functions expect.
     """
-    raw = recipe.get("ingredients", [])
+    ingredients = [
+        {
+            "name": _normalise_ingredient_name(i.get("name", "")),
+            "amount": _to_float(i.get("quantity", 0)),
+            "unit": i.get("unit", ""),
+        }
+        for i in recipe.get("ingredients", [])
+    ]
 
     return {
         "cooking_time_minutes": recipe.get("estimated_cooking_time_minutes", 0),
@@ -146,31 +156,12 @@ def build_logic_manager_ai_response(recipe, requested_meal_type):
         #reflects the requested meal type, not an independent check
         #of whether the generated recipe is breakfast.
         "is_breakfast": requested_meal_type == "Breakfast",
-        "main_ingredients_used": [i.get("name", "") for i in raw],
-        "servings": recipe.get("servings", 0),
-        "ingredients": [
-            {
-                "name": i.get("name", ""),
-                "amount": _to_float(i.get("quantity", 0)),
-                "unit": i.get("unit", ""),
-            }
-            for i in raw
-        ],
-        #allow the dietary validator to check seasonings too.
-        "seasonings": recipe.get("seasonings", []),
-    }
-
-
-    return {
-        "cooking_time_minutes": recipe.get("estimated_cooking_time_minutes", 0),
-        "dietary_information": _derive_dietary_information(recipe),
-        # ai_manager doesn't report whether a recipe "is" breakfast - but we already told it which meal_type to generate for, so a recipe coming back from a "Breakfast" request is treated as breakfast.
-        "is_breakfast": requested_meal_type == "Breakfast",
-        "main_ingredients_used": [
-            ingredient.get("name", "") for ingredient in recipe.get("ingredients", [])
-        ],
+        #reuse the names already normalised above.
+        "main_ingredients_used": [i["name"] for i in ingredients],
         "servings": recipe.get("servings", 0),
         "ingredients": ingredients,
+        #allow the dietary validator to check seasonings too.
+        "seasonings": recipe.get("seasonings", []),
     }
 
 
