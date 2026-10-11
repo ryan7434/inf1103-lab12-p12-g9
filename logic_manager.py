@@ -132,26 +132,67 @@ def check_measurements(user_preference, ai_response):
 
     user_ingredients = user_preference["available_ingredients"]
 
+    unit_conversions = {
+        "g": ("mass", 1.0),
+        "kg": ("mass", 1000.0),
+        "ml": ("volume", 1.0),
+        "l": ("volume", 1000.0),
+    }
+
     for recipe_item in ai_response["ingredients"]:
         recipe_name = recipe_item["name"].lower()
         recipe_amount = recipe_item["amount"]
-        recipe_unit = recipe_item["unit"].lower()
+        recipe_unit = recipe_item["unit"].strip().lower()
 
         for user_item in user_ingredients:
             user_name = user_item["name"].lower()
 
             if recipe_name == user_name:
                 user_amount = user_item["amount"]
-                user_unit = user_item["unit"].lower()
+                user_unit = user_item["unit"].strip().lower()
 
-                # Only compare amounts when the units are the same
+                #only compare amounts when the units are the same
                 if recipe_unit == user_unit:
-                    if recipe_amount > user_amount:
+                    comparable_recipe_amount = recipe_amount
+                    comparable_user_amount = user_amount
+                else:
+                    recipe_conversion = unit_conversions.get(recipe_unit)
+                    user_conversion = unit_conversions.get(user_unit)
+
+                    if (
+                        recipe_conversion is None
+                        or user_conversion is None
+                        or recipe_conversion[0] != user_conversion[0]
+                    ):
                         warnings.append(
-                            f"The recipe requires {recipe_amount} {recipe_unit} "
-                            f"of {recipe_name}, but you only have "
-                            f"{user_amount} {user_unit}."
+                            f"Cannot check the available quantity of "
+                            f"{recipe_name}: the recipe uses "
+                            f"{recipe_unit}, but you entered "
+                            f"{user_unit}."
                         )
+                        break
+
+                    comparable_recipe_amount = (
+                        recipe_amount * recipe_conversion[1]
+                    )
+                    comparable_user_amount = (
+                        user_amount * user_conversion[1]
+                    )
+
+                tolerance = 1e-9 * max(
+                    abs(comparable_recipe_amount),
+                    abs(comparable_user_amount),
+                )
+
+                if (
+                    comparable_recipe_amount - comparable_user_amount
+                    > tolerance
+                ):
+                    warnings.append(
+                        f"The recipe requires {recipe_amount} "
+                        f"{recipe_unit} of {recipe_name}, but you "
+                        f"only have {user_amount} {user_unit}."
+                    )
 
                 break
 
@@ -166,6 +207,7 @@ def evaluate_recipe(user_preferences, ai_response):
         user_preferences,
         ai_response
     )
+
     dietary_ok = validate_dietary_restriction(
         user_preferences,
         ai_response
@@ -182,29 +224,42 @@ def evaluate_recipe(user_preferences, ai_response):
     )
 
     measurements_ok = check_measurements(
-        user_preferences, 
+        user_preferences,
         ai_response
     )
+    #combine every nonempty warning so one warning does not hide another.
+    #uses none when none of the checks produces a warning.
+    combined_warning = "; ".join(
+        result["warning"]
+        for result in (
+            servings_ok,
+            measurements_ok,
+            cooking_time_ok,
+            dietary_ok,
+        )
+        if result["warning"]
+    ) or None
 
-    #A dict is always truthy even when passed=False, so a recipe that actually failed the cooking-time or 
-    # halal/peanut dietary check could still be returned as "ACCEPT" if the other checks passed
+    #accept only when all required checks pass.
+    #check each dictionary's "passed" value, not the dictionary itself.
     if (
-            ingredients_ok
-            and servings_ok["passed"]
-            and measurements_ok["passed"]
-            and cooking_time_ok["passed"]
-            and dietary_ok["passed"]
-        ):
-            return {
+        ingredients_ok
+        and servings_ok["passed"]
+        and measurements_ok["passed"]
+        and cooking_time_ok["passed"]
+        and dietary_ok["passed"]
+    ):
+        return {
             "status": "ACCEPT",
             "reason": "Recipe meets all requirements.",
-            "warning": servings_ok["warning"] or measurements_ok["warning"] or cooking_time_ok["warning"] or dietary_ok["warning"]
+            "warning": combined_warning
         }
-
+    
+    #reject when a required check fails, retaining warnings that were stored in the combined_warning variable.
     return {
         "status": "REJECT",
         "reason": "Recipe does not meet all requirements.",
-        "warning": servings_ok["warning"] or measurements_ok["warning"] or cooking_time_ok["warning"] or dietary_ok["warning"]
+        "warning": combined_warning
     }
 
 
