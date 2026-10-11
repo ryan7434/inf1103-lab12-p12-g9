@@ -157,9 +157,8 @@ def build_logic_manager_ai_response(recipe, requested_meal_type):
     return {
         "cooking_time_minutes": recipe.get("estimated_cooking_time_minutes", 0),
         "dietary_information": _derive_dietary_information(recipe),
-        #reflects the requested meal type, not an independent check
-        #of whether the generated recipe is breakfast.
-        "is_breakfast": requested_meal_type == "Breakfast",
+        #use the AI's breakfast classification of the actual recipe.
+       "is_breakfast": recipe["is_breakfast"],
         #reuse the names already normalised above.
         "main_ingredients_used": [i["name"] for i in ingredients],
         "servings": recipe.get("servings", 0),
@@ -226,6 +225,7 @@ def main():
     user_preference = build_logic_manager_user_preference(request)
  
     accepted = []
+    breakfast_scores = {}
 
     for recipe in recipes:
         if not AiManager.validate_recipe_schema(recipe):
@@ -263,11 +263,23 @@ def main():
         )
 
         if evaluation["status"] == "ACCEPT":
+            breakfast_scores[id(recipe)] = (
+                logic_manager.score_breakfast_preference(
+                    user_preference,
+                    ai_response,
+                )
+            )
             accepted.append((recipe, evaluation))
 
     if not accepted:
         print("\nNo recipes passed validation.")
         return
+
+    # Rank breakfast matches first without rejecting other valid recipes.
+    accepted.sort(
+        key=lambda item: breakfast_scores[id(item[0])],
+        reverse=True,
+    )
     
     # Step 4: persist each accepted recipe via data_manager.
     existing_records = data_manager.load_all_records()

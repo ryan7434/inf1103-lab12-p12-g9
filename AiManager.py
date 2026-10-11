@@ -39,6 +39,7 @@ REQUIRED_RECIPE_FIELDS = {
     "instructions": list,
     "estimated_cooking_time_minutes": (int, float),
     "servings": (int, float),
+    "is_breakfast": bool,
 }
 
 # Makes it so the output is in this format
@@ -62,12 +63,26 @@ RECIPE_RESPONSE_SCHEMA = {
             },
             "description": {
                 "type": "STRING",
-                "description": "Explain how this recipe fits the requested cuisine and taste preference",
+                "description": (
+                    "Explain how this recipe fits the requested cuisine and taste preference"
+                ),
             },
-            "seasonings": {"type": "ARRAY", "items": {"type": "STRING"}},
-            "instructions": {"type": "ARRAY", "items": {"type": "STRING"}},
+            "seasonings": {
+                "type": "ARRAY",
+                "items": {"type": "STRING"},
+            },
+            "instructions": {
+                "type": "ARRAY",
+                "items": {"type": "STRING"},
+            },
             "estimated_cooking_time_minutes": {"type": "NUMBER"},
             "servings": {"type": "NUMBER"},
+            "is_breakfast": {
+                "type": "BOOLEAN",
+                "description": (
+                    "True if this recipe is suitable for breakfast, false otherwise"
+                ),
+            },
         },
         "required": [
             "recipe_name",
@@ -77,6 +92,7 @@ RECIPE_RESPONSE_SCHEMA = {
             "instructions",
             "estimated_cooking_time_minutes",
             "servings",
+            "is_breakfast",
         ],
     },
 }
@@ -130,9 +146,12 @@ Rules:
 - Scale ingredient quantities to the requested servings.
 - Avoid ingredients conflicting with the dietary restrictions.
 - Cooking time must not exceed the stated maximum.
-- Recipes must genuinely match the stated cuisine (authentic style, not just a Western dish with a foreign-sounding name).
+- Try to match the requested cuisine where possible, but allow other uisines if needed. If the cuisine is any, any cuisine is acceptable.
 - Keep descriptions and instructions concise.
+- Set is_breakfast to true only if the actual dish is normally suitable for breakfast in the requested cuisine. Do not set it to true merely because the requested meal type is Breakfast.
 """
+
+
     return prompt.strip()
 
 
