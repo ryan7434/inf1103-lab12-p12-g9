@@ -22,7 +22,7 @@ MAX_RETRIES = 2
 RETRY_DELAY_SECONDS = 3          # backoff for generic failures (parse/API errors)
 RATE_LIMIT_DELAY_SECONDS = 20    # longer backoff specifically for HTTP 429
 
-MAX_OUTPUT_TOKENS = 1800         # kept low - schema enforcement means we don't
+MAX_OUTPUT_TOKENS = 3500        # kept low - schema enforcement means we don't
                                   # need extra tokens for the model to
                                   # "explain" the JSON shape.
 
@@ -188,7 +188,7 @@ def call_ai_api(prompt):
     )   #request object that holds where to send the request, what body/data to send, what headers to include, and what method to use (POST)
  
     try:    
-        with urllib.request.urlopen(request, timeout=30) as response:   #urlopen() sends the request to the API and waits for a response, with a timeout of 30 seconds
+        with urllib.request.urlopen(request, timeout=90) as response:   #urlopen() sends the request to the API and waits for a response, with a timeout of 45 seconds
             response_body = json.loads(response.read().decode("utf-8"))   #reads the response body, decodes it from bytes to a string and then json.loads() parses the string into a python dict
             candidates = response_body.get("candidates", [])  #get candidates from the response body, which is a list of possible responses from the model
             if not candidates:
