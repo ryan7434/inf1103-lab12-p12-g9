@@ -288,6 +288,7 @@ def main():
     print(f"\n{len(accepted)} of {len(recipes)} generated recipe(s) passed validation:\n")
     for recipe, evaluation in accepted:
         record = build_data_manager_record(next_id, recipe, request, ai_input)
+        record["ai_response"] = recipe
         saved = data_manager.save_processed_record(record)
 
         print("=" * 60)
@@ -326,7 +327,7 @@ def main():
         if evaluation["warning"]:
             print(f"\nNote: {evaluation['warning']}")
         if not saved:
-            print("\n(Warning: could not save this recipe to recipes_history.csv)")
+            print(f"\n(Warning: could not save this recipe to {data_manager.DATA_FILE})")
  
         print()
         next_id += 1
