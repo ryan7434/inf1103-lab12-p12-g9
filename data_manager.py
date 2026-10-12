@@ -20,21 +20,32 @@ def init_data_storage(file_path=DATA_FILE):
 
 
 def save_processed_record(record_dict, file_path=DATA_FILE):
-    """Appends a single processed recipe record to the JSON database file."""
-    init_data_storage(file_path)
+    """Adds a recipe without overwriting invalid existing history."""
+    if not isinstance(record_dict, dict) or not init_data_storage(file_path):
+        return False
 
     try:
-        # Load existing records
-        records = load_all_records(file_path)
-        
-        # Append new record
-        records.append(record_dict)
+        with open(file_path, encoding="utf-8") as f:
+            records = json.load(f)
 
-        # Write back the entire list
-        with open(file_path, mode="w", encoding="utf-8") as f:
-            json.dump(records, f, indent=4, ensure_ascii=False)
+        if not (
+            isinstance(records, list)
+            and all(isinstance(r, dict) for r in records)
+        ):
+            return False
+
+        # Serialise before opening for write, so a failure can't truncate the file.
+        output = json.dumps(
+            records + [record_dict],
+            indent=4,
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(output)
         return True
-    except Exception:
+    except (OSError, TypeError, ValueError):
         return False
 
 
