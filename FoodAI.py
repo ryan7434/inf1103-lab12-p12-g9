@@ -299,6 +299,10 @@ def main():
         )
         print("=" * 60)
 
+        if recipe.get("is_breakfast"):
+            print("Breakfast dish")
+
+
         if recipe.get("description"):
             print(f"\n{recipe['description']}")
 
