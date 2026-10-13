@@ -1,3 +1,7 @@
+#Test inputs are stored as Python dictionaries and not JSON file
+#The data is passed directly to the logic manager without external file dependencies
+
+
 import copy
 import logic_manager as lm
 
