@@ -64,9 +64,13 @@ def load_all_records(file_path=DATA_FILE):
             if not content:
                 return []
             records = json.loads(content)
-            if isinstance(records, list):
-                return records
-            return []
+        if (
+            isinstance(records, list)
+            and all(isinstance(record, dict) for record in records)
+        ):
+            return records
+
+        return []
     except (json.JSONDecodeError, Exception):
         return []
 
