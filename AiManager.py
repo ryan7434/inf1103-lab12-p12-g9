@@ -188,7 +188,7 @@ def call_ai_api(prompt):
     )   #request object that holds where to send the request, what body/data to send, what headers to include, and what method to use (POST)
  
     try:    
-        with urllib.request.urlopen(request, timeout=90) as response:   #urlopen() sends the request to the API and waits for a response, with a timeout of 45 seconds
+        with urllib.request.urlopen(request, timeout=90) as response:   #urlopen() sends the request to the API and waits for a response, with a timeout of 90 seconds
             response_body = json.loads(response.read().decode("utf-8"))   #reads the response body, decodes it from bytes to a string and then json.loads() parses the string into a python dict
             candidates = response_body.get("candidates", [])  #get candidates from the response body, which is a list of possible responses from the model
             if not candidates:
