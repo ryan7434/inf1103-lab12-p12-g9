@@ -97,6 +97,34 @@ RECIPE_RESPONSE_SCHEMA = {
     },
 }
 
+class AIError(Exception):
+    """Base class for every failure the AI layer can report.
+
+    Each subclass says whether retrying can help and how long to wait, so the
+    retry loop never needs to check which kind of error it received.
+    """
+
+    retryable: bool = True
+    retry_delay_seconds: float = 3
+
+class AIConfigurationError(AIError):
+    """The AI layer is not set up (for example, no API key). Retrying cannot help."""
+
+    retryable = False
+    retry_delay_seconds = 0
+
+class AITransportError(AIError):
+    """The request failed: network error, timeout or an HTTP error status."""
+
+class AIRateLimitError(AITransportError):
+    """The provider said we are sending too many requests (HTTP 429)."""
+
+    retry_delay_seconds = 20
+
+
+class AIResponseError(AIError):
+    """A reply arrived but cannot be used: empty, not JSON, wrong shape or no valid recipes."""
+
 
 def build_prompt(user_input):
     """
