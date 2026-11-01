@@ -1,11 +1,4 @@
 """
-Responsibilities:
-  1. Build a prompt from the input record.
-  2. Call the AI API and parse the response.
-  3. Validate the response schema - reject/retry on malformed output.
-  4. Handle API failure gracefully - log and continue, never crash.
-  5. Zero domain logic here - only API interaction
-
 Only function other layers should call:
     generate_recipes(user_input: dict) -> list[dict]
 
@@ -29,11 +22,11 @@ MAX_RETRIES = 2
 RETRY_DELAY_SECONDS = 3          # backoff for generic failures (parse/API errors)
 RATE_LIMIT_DELAY_SECONDS = 20    # longer backoff specifically for HTTP 429
 
-MAX_OUTPUT_TOKENS = 1800         # kept low - schema enforcement means we don't
+MAX_OUTPUT_TOKENS = 3500        # kept low - schema enforcement means we don't
                                   # need extra tokens for the model to
-                                  # explain the JSON shape.
+                                  # "explain" the JSON shape.
 
-THINKING_BUDGET = 0     
+THINKING_BUDGET = 0
 
 LOG_FILE = "ai_manager_errors.log"
 
@@ -46,6 +39,7 @@ REQUIRED_RECIPE_FIELDS = {
     "instructions": list,
     "estimated_cooking_time_minutes": (int, float),
     "servings": (int, float),
+    "is_breakfast": bool,
 }
 
 # Makes it so the output is in this format
@@ -69,12 +63,26 @@ RECIPE_RESPONSE_SCHEMA = {
             },
             "description": {
                 "type": "STRING",
-                "description": "Explain how this recipe fits the requested cuisine and taste preference",
+                "description": (
+                    "Explain how this recipe fits the requested cuisine and taste preference"
+                ),
             },
-            "seasonings": {"type": "ARRAY", "items": {"type": "STRING"}},
-            "instructions": {"type": "ARRAY", "items": {"type": "STRING"}},
+            "seasonings": {
+                "type": "ARRAY",
+                "items": {"type": "STRING"},
+            },
+            "instructions": {
+                "type": "ARRAY",
+                "items": {"type": "STRING"},
+            },
             "estimated_cooking_time_minutes": {"type": "NUMBER"},
             "servings": {"type": "NUMBER"},
+            "is_breakfast": {
+                "type": "BOOLEAN",
+                "description": (
+                    "True if this recipe is suitable for breakfast, false otherwise"
+                ),
+            },
         },
         "required": [
             "recipe_name",
@@ -84,6 +92,7 @@ RECIPE_RESPONSE_SCHEMA = {
             "instructions",
             "estimated_cooking_time_minutes",
             "servings",
+            "is_breakfast",
         ],
     },
 }
@@ -121,15 +130,28 @@ Meal type: {user_input.get('meal_type', 'Any')}
 Taste preference: {user_input.get('taste_preference', 'Any')}
 Maximum cooking time: {user_input.get('max_cooking_time', 'No limit')} minutes
 Servings: {user_input.get('servings', 1)}
+
+Ingredient quantity rules:
+- Ingredient quantities must be positive numbers or fractions.
+- Keep quantity and unit separate.
+- For ingredients listed by the user, use the exact unit supplied
+  for that ingredient, including custom units. Do not convert it
+  or change its spelling.
+- For additional ingredients, use these units:
+  g, kg, ml, L, tbsp, tsp, pieces, clove, slice.
+- Do not use vague quantities such as "a pinch", "a handful" in structured ingredient quantity fields.
  
 Rules:
 - Each recipe should use at least 3 of the listed ingredients where possible.
 - Scale ingredient quantities to the requested servings.
 - Avoid ingredients conflicting with the dietary restrictions.
 - Cooking time must not exceed the stated maximum.
-- Recipes must genuinely match the stated cuisine (authentic style, not just a Western dish with a foreign-sounding name).
+- Try to match the requested cuisine where possible, but allow other uisines if needed. If the cuisine is any, any cuisine is acceptable.
 - Keep descriptions and instructions concise.
+- Set is_breakfast to true only if the actual dish is normally suitable for breakfast in the requested cuisine. Do not set it to true merely because the requested meal type is Breakfast.
 """
+
+
     return prompt.strip()
 
 
@@ -166,7 +188,7 @@ def call_ai_api(prompt):
     )   #request object that holds where to send the request, what body/data to send, what headers to include, and what method to use (POST)
  
     try:    
-        with urllib.request.urlopen(request, timeout=30) as response:   #urlopen() sends the request to the API and waits for a response, with a timeout of 30 seconds
+        with urllib.request.urlopen(request, timeout=90) as response:   #urlopen() sends the request to the API and waits for a response, with a timeout of 90 seconds
             response_body = json.loads(response.read().decode("utf-8"))   #reads the response body, decodes it from bytes to a string and then json.loads() parses the string into a python dict
             candidates = response_body.get("candidates", [])  #get candidates from the response body, which is a list of possible responses from the model
             if not candidates:
@@ -236,35 +258,47 @@ def validate_recipe_schema(recipe):
     """
     if not isinstance(recipe, dict):    #check if the recipe is a dict, if not return False
         return False
- 
+
     for field, expected_type in REQUIRED_RECIPE_FIELDS.items(): #check if each required field is present in the recipe and if it is of the expected type, if not return False
         if field not in recipe:
             return False
         if not isinstance(recipe[field], expected_type):
             return False
- 
+
     if not recipe["ingredients"]:   #check if the ingredients list is empty, if it is return False
         return False
     for ingredient in recipe["ingredients"]:    #check if each ingredient is a dict and has a "name" key, if not return False
         if not isinstance(ingredient, dict) or "name" not in ingredient:
             return False
- 
+
+        for field in ("name", "quantity", "unit"):
+            value = ingredient.get(field)
+            if not isinstance(value, str):
+                return False
+            if not value.strip():
+                return False
+
     if not recipe["instructions"]:  #check if the instructions list is empty, if it is return False
         return False
- 
+
+    for step in recipe["instructions"]:
+        if not isinstance(step, str) or not step.strip():
+            return False
+
+    for seasoning in recipe["seasonings"]:
+        if not isinstance(seasoning, str) or not seasoning.strip():
+            return False
+
     return True
 
 
 def generate_recipes(user_input):
     """
-    Main entry point called. only function other layers should call
- 
-    Chains together: build_prompt -> call_ai_api -> parse_ai_response ->
-    validate_recipe_schema, with retries on failure and a longer backoff
-    specifically for rate limiting.
+    Returns a list of schema-valid recipe dicts. not yet filtered or
+    ranked against business rules
  
     Returns an empty list (never raises) if the AI could not produce
-    valid output after all retries, or if the API failed entirely
+    valid output after all retries, or if the API failed entirely.
     """
     prompt = build_prompt(user_input)   
  
