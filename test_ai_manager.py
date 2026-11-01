@@ -82,6 +82,36 @@ class TestAIErrorHierarchy(unittest.TestCase):
         with self.assertRaises(ai.AITransportError):
             raise ai.AIRateLimitError("slow down")
 
+class TestErrorLogger(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch("sys.stdout", new_callable=io.StringIO)
+        self.stdout = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = os.path.join(self.tmp.name, "errors.log")
+
+    def test_writes_a_timestamped_line_and_echoes_it(self):
+        ai.ErrorLogger(log_file=self.path).log("something failed")
+        with open(self.path, encoding="utf-8") as handle:
+            content = handle.read()
+        self.assertIn("something failed", content)
+        self.assertTrue(content.startswith("["))
+        self.assertIn("[ai_manager] something failed", self.stdout.getvalue())
+
+    def test_appends_instead_of_overwriting(self):
+        logger = ai.ErrorLogger(log_file=self.path)
+        logger.log("first")
+        logger.log("second")
+        with open(self.path, encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+        self.assertEqual(len(lines), 2)
+
+    def test_never_raises_when_the_log_file_cannot_be_written(self):
+        logger = ai.ErrorLogger(log_file=self.tmp.name)  # a directory, not a file
+        logger.log("still fine")
+        self.assertIn("still fine", self.stdout.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
