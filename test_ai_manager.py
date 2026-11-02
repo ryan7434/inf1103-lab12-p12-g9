@@ -112,6 +112,107 @@ class TestErrorLogger(unittest.TestCase):
         logger.log("still fine")
         self.assertIn("still fine", self.stdout.getvalue())
 
+def fake_http_response(body):
+    """A stand-in for what urlopen returns: a context manager with read()."""
+    response = mock.MagicMock()
+    payload = body if isinstance(body, bytes) else json.dumps(body).encode("utf-8")
+    response.read.return_value = payload
+    response.__enter__.return_value = response
+    return response
+
+
+def gemini_body(text):
+    return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
+
+
+def make_gemini(api_key="SECRET-KEY"):
+    return ai.GeminiProvider(api_key=api_key, response_schema={"type": "ARRAY"})
+
+
+class TestGeminiProvider(unittest.TestCase):
+    def test_returns_the_reply_text_with_parts_joined(self):
+        body = {"candidates": [{"content": {"parts": [{"text": "[1,"}, {"text": " 2]"}]}}]}
+        with mock.patch("urllib.request.urlopen", return_value=fake_http_response(body)):
+            self.assertEqual(make_gemini().generate("hi"), "[1, 2]")
+
+    def test_request_asks_for_structured_json_with_the_schema(self):
+        with mock.patch(
+            "urllib.request.urlopen", return_value=fake_http_response(gemini_body("[]"))
+        ) as urlopen:
+            make_gemini().generate("my prompt")
+        request = urlopen.call_args[0][0]
+        sent = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(request.get_method(), "POST")
+        self.assertIn(ai.GeminiProvider.DEFAULT_MODEL, request.full_url)
+        self.assertEqual(sent["contents"][0]["parts"][0]["text"], "my prompt")
+        self.assertEqual(sent["generationConfig"]["responseMimeType"], "application/json")
+        self.assertEqual(sent["generationConfig"]["responseSchema"], {"type": "ARRAY"})
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 90)
+
+    def test_http_429_becomes_a_rate_limit_error(self):
+        error = urllib.error.HTTPError("http://x", 429, "Too Many Requests", {}, io.BytesIO(b"{}"))
+        with mock.patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(ai.AIRateLimitError):
+                make_gemini().generate("hi")
+
+    def test_other_http_errors_become_transport_errors_with_the_body(self):
+        error = urllib.error.HTTPError(
+            "http://x", 500, "Server Error", {}, io.BytesIO(b'{"error": "boom"}')
+        )
+        with mock.patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(ai.AITransportError) as caught:
+                make_gemini().generate("hi")
+        self.assertIn("500", str(caught.exception))
+        self.assertIn("boom", str(caught.exception))
+        self.assertNotIn("SECRET-KEY", str(caught.exception))
+
+    def test_network_failure_becomes_a_transport_error(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=urllib.error.URLError("no route to host")
+        ):
+            with self.assertRaises(ai.AITransportError) as caught:
+                make_gemini().generate("hi")
+        self.assertIn("no route to host", str(caught.exception))
+
+    def test_timeout_becomes_a_transport_error(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=TimeoutError("The read operation timed out")
+        ):
+            with self.assertRaises(ai.AITransportError) as caught:
+                make_gemini().generate("hi")
+        self.assertIn("timed out", str(caught.exception))
+
+    def test_a_non_json_http_body_becomes_a_transport_error(self):
+        with mock.patch("urllib.request.urlopen", return_value=fake_http_response(b"not json")):
+            with self.assertRaises(ai.AITransportError):
+                make_gemini().generate("hi")
+
+    def test_no_candidates_becomes_a_response_error(self):
+        with mock.patch("urllib.request.urlopen", return_value=fake_http_response({"candidates": []})):
+            with self.assertRaises(ai.AIResponseError):
+                make_gemini().generate("hi")
+
+    def test_unexpected_response_structure_becomes_a_response_error(self):
+        for body in ({"candidates": ["oops"]}, ["not", "a", "dict"]):
+            with self.subTest(body=body):
+                with mock.patch("urllib.request.urlopen", return_value=fake_http_response(body)):
+                    with self.assertRaises(ai.AIResponseError):
+                        make_gemini().generate("hi")
+
+    def test_missing_api_key_fails_fast_without_a_request(self):
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            with self.assertRaises(ai.AIConfigurationError):
+                make_gemini(api_key="").generate("hi")
+        urlopen.assert_not_called()
+
+    def test_api_key_is_not_exposed_as_a_public_or_protected_attribute(self):
+        provider = make_gemini()
+        self.assertFalse(hasattr(provider, "api_key"))
+        self.assertFalse(hasattr(provider, "_api_key"))
+        self.assertNotIn("SECRET-KEY", repr(provider))
+
+    def test_model_is_readable_through_a_property(self):
+        self.assertEqual(make_gemini().model, ai.GeminiProvider.DEFAULT_MODEL)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
