@@ -1,6 +1,6 @@
 from datetime import datetime
 import IO_manager
-import AiManager
+from ai_manager import AiManager
 import logic_manager
 import data_manager
 
@@ -210,7 +210,8 @@ def main():
     # Step 2: translate it into ai_manager's expected shape, then
     # generate candidate recipes via the AI layer.
     ai_input = build_ai_manager_input(request)
-    recipes = AiManager.generate_recipes(ai_input)
+    ai_manager = AiManager.from_environment()
+    recipes = ai_manager.generate_recipes(ai_input)
  
     if not recipes:
         print(
@@ -228,7 +229,7 @@ def main():
     breakfast_scores = {}
 
     for recipe in recipes:
-        if not AiManager.validate_recipe_schema(recipe):
+        if not ai_manager.is_valid_recipe(recipe):
             recipe_name = (
                 recipe.get("recipe_name", "Unnamed recipe")
                 if isinstance(recipe, dict)
