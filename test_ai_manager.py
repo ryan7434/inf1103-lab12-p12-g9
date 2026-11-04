@@ -243,6 +243,111 @@ class TestRecipePromptBuilder(unittest.TestCase):
         prompt = ai.RecipePromptBuilder().build(SAMPLE_REQUEST)
         self.assertEqual(prompt, prompt.strip())
 
+class TestResponseParser(unittest.TestCase):
+    def setUp(self):
+        self.parser = ai.ResponseParser()
+
+    def test_parses_a_json_list(self):
+        self.assertEqual(self.parser.parse('[{"a": 1}]'), [{"a": 1}])
+
+    def test_wraps_a_single_object_in_a_list(self):
+        self.assertEqual(self.parser.parse('{"a": 1}'), [{"a": 1}])
+
+    def test_strips_a_markdown_code_fence(self):
+        self.assertEqual(self.parser.parse('```json\n[{"a": 1}]\n```'), [{"a": 1}])
+
+    def test_garbage_raises_a_response_error_with_a_preview(self):
+        with self.assertRaises(ai.AIResponseError) as caught:
+            self.parser.parse("not json at all {broken")
+        self.assertIn("not json at all", str(caught.exception))
+
+    def test_empty_text_raises_a_response_error(self):
+        for text in ("", "   ", None):
+            with self.subTest(text=text):
+                with self.assertRaises(ai.AIResponseError):
+                    self.parser.parse(text)
+
+    def test_json_that_is_not_a_list_or_object_raises(self):
+        for text in ('"just a string"', "42", "null"):
+            with self.subTest(text=text):
+                with self.assertRaises(ai.AIResponseError):
+                    self.parser.parse(text)
+
+
+class TestResponseValidatorContract(unittest.TestCase):
+    def test_the_abstract_base_cannot_be_instantiated(self):
+        with self.assertRaises(TypeError):
+            ai.ResponseValidator()
+
+    def test_recipe_validator_is_a_response_validator(self):
+        self.assertIsInstance(ai.RecipeValidator(), ai.ResponseValidator)
+
+    def test_filter_valid_keeps_only_valid_items_in_order(self):
+        first, third = good_recipe(recipe_name="A"), good_recipe(recipe_name="C")
+        kept = ai.RecipeValidator().filter_valid([first, {"recipe_name": "bad"}, third, "junk"])
+        self.assertEqual(kept, [first, third])
+
+
+class TestRecipeValidator(unittest.TestCase):
+    def setUp(self):
+        self.validator = ai.RecipeValidator()
+
+    def assertInvalid(self, recipe):
+        self.assertFalse(self.validator.is_valid(recipe))
+
+    def test_a_complete_recipe_is_valid(self):
+        self.assertTrue(self.validator.is_valid(good_recipe()))
+
+    def test_empty_seasonings_list_is_allowed(self):
+        self.assertTrue(self.validator.is_valid(good_recipe(seasonings=[])))
+
+    def test_every_required_field_is_needed(self):
+        for field in ai.RecipeValidator.REQUIRED_FIELDS:
+            with self.subTest(missing=field):
+                recipe = good_recipe()
+                del recipe[field]
+                self.assertInvalid(recipe)
+
+    def test_wrong_field_types_are_rejected(self):
+        for field, value in (
+            ("recipe_name", 5),
+            ("servings", "two"),
+            ("estimated_cooking_time_minutes", "12"),
+            ("is_breakfast", "yes"),
+            ("ingredients", "eggs"),
+            ("instructions", "Cook it."),
+        ):
+            with self.subTest(field=field):
+                self.assertInvalid(good_recipe(**{field: value}))
+
+    def test_a_boolean_is_not_accepted_as_a_number(self):
+        self.assertInvalid(good_recipe(servings=True))
+        self.assertInvalid(good_recipe(estimated_cooking_time_minutes=False))
+
+    def test_not_a_dict_is_rejected(self):
+        for item in ("a string", None, 5, ["list"]):
+            with self.subTest(item=item):
+                self.assertInvalid(item)
+
+    def test_ingredient_problems_are_rejected(self):
+        bad_lists = (
+            [],
+            ["egg"],
+            [{"name": "egg", "quantity": "3"}],
+            [{"name": " ", "quantity": "3", "unit": "pieces"}],
+            [{"name": "egg", "quantity": 3, "unit": "pieces"}],
+            [{"name": "egg", "quantity": "3", "unit": ""}],
+        )
+        for ingredients in bad_lists:
+            with self.subTest(ingredients=ingredients):
+                self.assertInvalid(good_recipe(ingredients=ingredients))
+
+    def test_instruction_and_seasoning_problems_are_rejected(self):
+        self.assertInvalid(good_recipe(instructions=[]))
+        self.assertInvalid(good_recipe(instructions=["Whisk.", "  "]))
+        self.assertInvalid(good_recipe(instructions=["Whisk.", 5]))
+        self.assertInvalid(good_recipe(seasonings=["salt", ""]))
+        self.assertInvalid(good_recipe(seasonings=[None]))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
