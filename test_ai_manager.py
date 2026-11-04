@@ -349,5 +349,192 @@ class TestRecipeValidator(unittest.TestCase):
         self.assertInvalid(good_recipe(seasonings=["salt", ""]))
         self.assertInvalid(good_recipe(seasonings=[None]))
 
+class StubProvider(ai.AIProvider):
+    """Test double for the provider contract.
+
+    Replays scripted replies: a string is returned, an exception is raised.
+    The last reply repeats forever, so [SomeError()] fails on every attempt.
+    """
+
+    def __init__(self, replies):
+        self._replies = list(replies)
+        self.prompts = []
+
+    def generate(self, prompt):
+        self.prompts.append(prompt)
+        reply = self._replies.pop(0) if len(self._replies) > 1 else self._replies[0]
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+
+class ManagerTestCase(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch("sys.stdout", new_callable=io.StringIO)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.log_path = os.path.join(self.tmp.name, "errors.log")
+        self.sleeps = []
+
+    def make_manager(self, replies, max_attempts=2):
+        stub = StubProvider(replies)
+        manager = ai.AiManager(
+            provider=stub,
+            logger=ai.ErrorLogger(log_file=self.log_path),
+            max_attempts=max_attempts,
+            sleep=self.sleeps.append,
+        )
+        return manager, stub
+
+    def log_text(self):
+        try:
+            with open(self.log_path, encoding="utf-8") as handle:
+                return handle.read()
+        except FileNotFoundError:
+            return ""
+
+
+class TestAiManagerGenerateRecipes(ManagerTestCase):
+    def test_returns_valid_recipes_on_the_first_attempt(self):
+        manager, stub = self.make_manager([json.dumps([good_recipe()])])
+        recipes = manager.generate_recipes(SAMPLE_REQUEST)
+        self.assertEqual(recipes, [good_recipe()])
+        self.assertEqual(len(stub.prompts), 1)
+        self.assertEqual(self.sleeps, [])
+        self.assertIn("Generate exactly 5", stub.prompts[0])
+
+    def test_keeps_only_the_valid_recipes_from_a_mixed_reply(self):
+        reply = json.dumps([good_recipe(), {"recipe_name": "incomplete"}])
+        manager, _ = self.make_manager([reply])
+        self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [good_recipe()])
+
+    def test_retries_after_a_transport_error_with_the_default_delay(self):
+        manager, stub = self.make_manager(
+            [ai.AITransportError("timed out"), json.dumps([good_recipe()])]
+        )
+        self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [good_recipe()])
+        self.assertEqual(len(stub.prompts), 2)
+        self.assertEqual(self.sleeps, [ai.AITransportError.retry_delay_seconds])
+
+    def test_waits_longer_after_a_rate_limit(self):
+        manager, _ = self.make_manager(
+            [ai.AIRateLimitError("429"), json.dumps([good_recipe()])]
+        )
+        manager.generate_recipes(SAMPLE_REQUEST)
+        self.assertEqual(self.sleeps, [ai.AIRateLimitError.retry_delay_seconds])
+
+    def test_retries_after_malformed_json(self):
+        manager, stub = self.make_manager(["{broken", json.dumps([good_recipe()])])
+        self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [good_recipe()])
+        self.assertEqual(len(stub.prompts), 2)
+
+    def test_retries_when_no_recipe_passes_schema_validation(self):
+        manager, stub = self.make_manager(
+            [json.dumps([{"recipe_name": "incomplete"}]), json.dumps([good_recipe()])]
+        )
+        self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [good_recipe()])
+        self.assertEqual(len(stub.prompts), 2)
+
+    def test_returns_an_empty_list_when_every_attempt_fails(self):
+        manager, stub = self.make_manager([ai.AITransportError("down")], max_attempts=3)
+        self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [])
+        self.assertEqual(len(stub.prompts), 3)
+        self.assertEqual(len(self.sleeps), 2)  # no pointless wait after the last attempt
+        self.assertIn("All retries exhausted", self.log_text())
+
+    def test_does_not_retry_when_retrying_cannot_help(self):
+        manager, stub = self.make_manager([ai.AIConfigurationError("no key")])
+        self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [])
+        self.assertEqual(len(stub.prompts), 1)
+        self.assertEqual(self.sleeps, [])
+        self.assertIn("no key", self.log_text())
+
+    def test_never_raises_whatever_the_provider_reports(self):
+        for error in (
+            ai.AIConfigurationError("a"),
+            ai.AITransportError("b"),
+            ai.AIRateLimitError("c"),
+            ai.AIResponseError("d"),
+        ):
+            with self.subTest(error=type(error).__name__):
+                manager, _ = self.make_manager([error])
+                self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [])
+
+    def test_failures_are_written_to_the_log_with_the_attempt_number(self):
+        manager, _ = self.make_manager([ai.AIRateLimitError("Gemini rate limit hit (HTTP 429).")])
+        manager.generate_recipes(SAMPLE_REQUEST)
+        log = self.log_text()
+        self.assertIn("Attempt 1/2 failed: Gemini rate limit hit (HTTP 429).", log)
+        self.assertIn("Retrying in 20s", log)
+
+    def test_rejects_a_nonsensical_attempt_count(self):
+        with self.assertRaises(ValueError):
+            ai.AiManager(StubProvider(["[]"]), ai.ErrorLogger(), max_attempts=0)
+
+    def test_is_valid_recipe_uses_the_same_rules_as_generation(self):
+        manager, _ = self.make_manager(["[]"])
+        self.assertTrue(manager.is_valid_recipe(good_recipe()))
+        self.assertFalse(manager.is_valid_recipe({"recipe_name": "incomplete"}))
+
+
+class TestAiManagerDesign(ManagerTestCase):
+    def test_provider_contract_cannot_be_instantiated(self):
+        with self.assertRaises(TypeError):
+            ai.AIProvider()
+
+    def test_a_provider_missing_generate_cannot_be_instantiated(self):
+        class Incomplete(ai.AIProvider):
+            pass
+
+        with self.assertRaises(TypeError):
+            Incomplete()
+
+    def test_manager_gives_the_same_result_with_any_provider(self):
+        # Liskov substitution: the stub and the real GeminiProvider are interchangeable
+        reply = json.dumps([good_recipe()])
+        gemini = ai.GeminiProvider(api_key="k", response_schema={})
+        for name, provider, patcher in (
+            ("stub", StubProvider([reply]), contextlib.nullcontext()),
+            (
+                "gemini",
+                gemini,
+                mock.patch("urllib.request.urlopen", return_value=fake_http_response(gemini_body(reply))),
+            ),
+        ):
+            with self.subTest(provider=name), patcher:
+                manager = ai.AiManager(
+                    provider, ai.ErrorLogger(log_file=self.log_path), sleep=self.sleeps.append
+                )
+                self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [good_recipe()])
+
+    def test_one_provider_can_be_shared_by_two_managers(self):
+        # aggregation: the provider lives on its own, outside any one manager
+        stub = StubProvider([json.dumps([good_recipe()])])
+        logger = ai.ErrorLogger(log_file=self.log_path)
+        first = ai.AiManager(stub, logger)
+        second = ai.AiManager(stub, logger)
+        first.generate_recipes(SAMPLE_REQUEST)
+        second.generate_recipes(SAMPLE_REQUEST)
+        self.assertEqual(len(stub.prompts), 2)
+
+    def test_from_environment_without_a_key_returns_nothing_and_makes_no_request(self):
+        with mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(ai.ErrorLogger, "log"), \
+                mock.patch("urllib.request.urlopen") as urlopen:
+            manager = ai.AiManager.from_environment()
+            self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [])
+        urlopen.assert_not_called()
+
+    def test_from_environment_sends_the_key_from_the_environment(self):
+        body = gemini_body(json.dumps([good_recipe()]))
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "env-key"}, clear=True), \
+                mock.patch("urllib.request.urlopen", return_value=fake_http_response(body)) as urlopen:
+            recipes = ai.AiManager.from_environment().generate_recipes(SAMPLE_REQUEST)
+        self.assertEqual(recipes, [good_recipe()])
+        self.assertIn("key=env-key", urlopen.call_args[0][0].full_url)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
