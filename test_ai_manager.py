@@ -214,5 +214,35 @@ class TestGeminiProvider(unittest.TestCase):
     def test_model_is_readable_through_a_property(self):
         self.assertEqual(make_gemini().model, ai.GeminiProvider.DEFAULT_MODEL)
 
+class TestRecipePromptBuilder(unittest.TestCase):
+    def test_prompt_contains_every_part_of_the_request(self):
+        prompt = ai.RecipePromptBuilder().build(SAMPLE_REQUEST)
+        for expected in (
+            "3 pieces egg",
+            "100 g spinach",
+            "pork",
+            "Western",
+            "Breakfast",
+            "Savoury",
+            "20 minutes",
+            "Servings: 2",
+            "exactly 5 different recipes",
+            "is_breakfast",
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, prompt)
+
+    def test_missing_values_fall_back_to_safe_defaults(self):
+        prompt = ai.RecipePromptBuilder().build({})
+        self.assertIn("Available ingredients: None specified", prompt)
+        self.assertIn("requirements: None", prompt)
+        self.assertIn("Cuisine preference: Any", prompt)
+        self.assertIn("Maximum cooking time: No limit", prompt)
+
+    def test_prompt_has_no_surrounding_whitespace(self):
+        prompt = ai.RecipePromptBuilder().build(SAMPLE_REQUEST)
+        self.assertEqual(prompt, prompt.strip())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
