@@ -535,6 +535,14 @@ class TestAiManagerDesign(ManagerTestCase):
         self.assertEqual(recipes, [good_recipe()])
         self.assertIn("key=env-key", urlopen.call_args[0][0].full_url)
 
+class TestNoProceduralCodeRemains(unittest.TestCase):
+    def test_the_module_defines_no_standalone_functions(self):
+        functions = [
+            name
+            for name, obj in vars(ai).items()
+            if inspect.isfunction(obj) and obj.__module__ == ai.__name__
+        ]
+        self.assertEqual(functions, [])
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
