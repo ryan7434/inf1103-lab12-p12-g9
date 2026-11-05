@@ -131,23 +131,30 @@ class BreakfastPreferenceRule(RecipeRule):
         return RuleResult(passed=True, score=1 if matches else 0)
 
 # checks recipe uses at least 3 of the user's ingredient input
-def check_main_ingredient(user_preference, ai_response):
-    user_ingredient = user_preference["available_ingredients"]
-    ai_ingredient = ai_response["main_ingredients_used"]
-
-    match_count = 0
-
-    for ingredient in user_ingredient:
-          ingredient_name = ingredient["name"]
-          if ingredient_name.lower() in [
-              item.lower() for item in ai_ingredient
-    ]:
-            match_count += 1
-
-    if match_count >= 3:
-        return True
-
-    return False
+class MainIngredientRule(RecipeRule):
+ 
+    def __init__(self, min_matches: int = 3):
+        self.__min_matches = min_matches
+ 
+    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        user_ingredient = {
+            item["name"].strip().lower()
+            for item in user_preferences["available_ingredients"]
+        }
+        ai_ingredient = {
+            name.strip().lower()
+            for name in ai_response["main_ingredients_used"]
+        }
+ 
+        match_count = len(user_ingredient & ai_ingredient)
+ 
+        if match_count < self.__min_matches:
+            return RuleResult(
+                passed=False,
+                warning=(f"Recipe uses only {match_count} of required ingredients. "
+                         f"At least {self.__min_matches} are required."),
+            )
+        return RuleResult(passed=True)
 
 # checks recipe for max 5 servings
 def check_max_servings(user_preference, ai_response):
