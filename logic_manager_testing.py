@@ -260,3 +260,12 @@ class TestLogicManager:
         assert output["status"] == "ACCEPT"
         assert output["score"] == 1
         assert output["warning"] is None
+
+
+# ==========================================
+# RUNNING TESTS
+# ==========================================
+
+if __name__ == "__main__":
+    import pytest
+    pytest.main(["-v", __file__])
