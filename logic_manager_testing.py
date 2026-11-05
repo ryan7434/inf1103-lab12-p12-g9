@@ -16,6 +16,7 @@ class TestData:
             {"name": "egg", "amount": 4, "unit": "pieces"},
             {"name": "spinach", "amount": 200, "unit": "g"},
             {"name": "milk", "amount": 500, "unit": "ml"},
+            {"name": "spicy satay sauce", "amount": 100, "unit": "ml"},
         ],
         "servings": 2,
     }
@@ -23,7 +24,7 @@ class TestData:
     ai = {
         "cooking_time_minutes": 20,
         "is_breakfast": True,
-        "main_ingredients_used": ["egg", "spinach", "milk"],
+        "main_ingredients_used": ["egg", "spinach", "milk", "spicy satay sauce"],
         "servings": 2,
         "dietary_information": {
             "halal_suitable": True,
@@ -33,6 +34,7 @@ class TestData:
             {"name": "egg", "amount": 2, "unit": "pieces"},
             {"name": "spinach", "amount": 100, "unit": "g"},
             {"name": "milk", "amount": 200, "unit": "ml"},
+            {"name": "spicy satay sauce", "amount": 50, "unit": "ml"},
         ],
     }
 
@@ -98,6 +100,116 @@ class TestIndividualRules:
 
         assert result.passed is False
         assert "contains peanuts" in result.warning
+
+    
+    def test_peanut_ingredient_detected(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.ai["dietary_information"]["contains_peanuts"] = False
+        self.ai["ingredients"].append({
+            "name": "peanut butter",
+            "amount": 20,
+            "unit": "g"
+        })
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "peanut butter" in result.warning.lower()
+
+    def test_general_nut_restriction_detects_almonds(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["nuts"]
+
+        self.ai["ingredients"].append({
+            "name": "almonds",
+            "amount": 50,
+            "unit": "g"
+        })
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "almonds" in result.warning.lower()
+
+    def test_tree_nut_restriction_detects_cashews(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["tree nuts"]
+
+        self.ai["ingredients"].append({
+            "name": "cashews",
+            "amount": 30,
+            "unit": "g"
+        })
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "cashews" in result.warning.lower()
+
+    def test_dairy_restriction_detects_milk(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["no dairy"]
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "milk" in result.warning.lower()
+
+    def test_egg_restriction_detects_egg(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["no eggs"]
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "egg" in result.warning.lower()
+
+    def test_soy_restriction_detects_tofu(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["no soy"]
+
+        self.ai["ingredients"].append({
+            "name": "tofu",
+            "amount": 100,
+            "unit": "g"
+        })
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "tofu" in result.warning.lower()
+
+    def test_gluten_restriction_detects_bread(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["no gluten"]
+
+        self.ai["ingredients"].append({
+            "name": "bread",
+            "amount": 2,
+            "unit": "slices"
+        })
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "bread" in result.warning.lower()
+
+    def test_no_allergen_detected(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["no peanuts"]
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+
 
     def test_unverified_restriction_generates_warning(self):
         rule = lm.DietaryRestrictionRule()
