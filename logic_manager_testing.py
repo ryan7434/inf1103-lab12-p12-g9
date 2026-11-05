@@ -218,7 +218,7 @@ class TestLogicManager:
         result = self.manager.evaluate_recipe(self.user, self.ai)
 
         assert result.status == lm.Status.ACCEPT
-        assert result.warning is not None
+        assert "but you have only" in result.warning
 
     def test_breakfast_mismatch_does_not_reject_recipe(self):
         self.ai["is_breakfast"] = False
