@@ -1,30 +1,69 @@
-from dictionary import MEASUREMENT_UNITS
-import json
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
 
-# Load the AI response from the test script
-# with open('test_script_AI.json', 'r') as f:
-    # ai_response = json.load(f)
+class Status(Enum):
+    ACCEPT = "ACCEPT"
+    REJECT = "REJECT"
+ 
+ 
+@dataclass
+class RuleResult:
+    """Outcome of one rule. passed=False is a hard failure (reject)."""
+    passed: bool
+    warning: str | None = None
+    score: int = 0
+ 
+ 
+@dataclass
+class EvaluationResult:
+    """Final outcome returned to the rest of the application."""
+    status: Status
+    reason: str
+    score: int
+    warning: str | None = None
+ 
+    def to_dict(self) -> dict:
+        return {
+            "status": self.status.value,
+            "reason": self.reason,
+            "score": self.score,
+            "warning": self.warning,
+        }
+ 
+ 
+class RecipeRule(ABC):
+    """Interface for all recipe rules.
+ 
+    Contract: evaluate() returns a RuleResult.
+    """
+ 
+    @property
+    def name(self) -> str:
+        return type(self).__name__
+ 
+    @abstractmethod
+    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        pass
 
-# with open('test_script_user_input.json', 'r') as f:
-    # user_response = json.load(f)
+#--------------------
+# Rules
+#--------------------
 
 # maximum cooking time validation
-def validate_cooking_time(user_preference, ai_response):
-    max_time = user_preference["maximum_cooking_time"]
-    ai_time = ai_response["cooking_time_minutes"]
-
-    if ai_time > max_time:
-        return {
-            "passed": False,
-            "warning": (
-                f"The recipe takes {ai_time} minutes, which exceeds your {max_time}-minute limit."
+class CookingTimeRule(RecipeRule):
+ 
+    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        max_time = user_preferences["maximum_cooking_time"]
+        ai_time = ai_response["cooking_time_minutes"]
+ 
+        if ai_time > max_time:
+            return RuleResult(
+                passed=False,
+                warning=(f"Recipe takes {ai_time} minutes, "
+                         f"exceeding your {max_time}-minute limit."),
             )
-        }
-        
-    return {
-        "passed": True,
-        "warning": None
-    }
+        return RuleResult(passed=True)
 
 # dietary restrictions validation
 def validate_dietary_restriction(user_preference, ai_response):
