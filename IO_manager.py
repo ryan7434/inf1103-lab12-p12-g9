@@ -622,5 +622,5 @@ def main():
                 break
 
 
-if __name__ == "__main__":
-    request = main()
+#if __name__ == "__main__":  #only run the main function if this script is executed directly, not when imported as a module
+    #request = main()
