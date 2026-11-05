@@ -166,3 +166,97 @@ class TestIndividualRules:
         result = rule.evaluate(self.user, self.ai)
 
         assert result.score == 0
+
+# ==========================================
+# LOGIC MANAGER TESTS
+# ==========================================
+
+class TestLogicManager:
+
+    def setup_method(self):
+        self.manager = lm.LogicManager()
+        self.user = TestData.get_user()
+        self.ai = TestData.get_ai()
+
+    def test_valid_recipe_is_accepted(self):
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.ACCEPT
+        assert result.warning is None
+
+    def test_cooking_time_failure_rejects_recipe(self):
+        self.ai["cooking_time_minutes"] = 31
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.REJECT
+
+    def test_dietary_failure_rejects_recipe(self):
+        self.ai["dietary_information"]["contains_peanuts"] = True
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.REJECT
+
+    def test_insufficient_ingredients_rejects_recipe(self):
+        self.ai["main_ingredients_used"] = ["egg", "milk"]
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.REJECT
+
+    def test_excessive_servings_rejects_recipe(self):
+        self.ai["servings"] = 6
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.REJECT
+
+    def test_quantity_warning_does_not_reject_recipe(self):
+        self.ai["ingredients"][0]["amount"] = 5
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.ACCEPT
+        assert result.warning is not None
+
+    def test_breakfast_mismatch_does_not_reject_recipe(self):
+        self.ai["is_breakfast"] = False
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.ACCEPT
+        assert result.score == 0
+
+    def test_multiple_warnings_are_combined(self):
+        self.ai["ingredients"][0]["amount"] = 5
+        self.ai["servings"] = 1
+        self.ai["cooking_time_minutes"] = 31
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.REJECT
+        assert "exceeding your 30-minute limit" in result.warning
+        assert "but you have only" in result.warning
+        assert "less than your requested" in result.warning
+
+    def test_missing_ai_field_is_handled(self):
+        del self.ai["cooking_time_minutes"]
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.REJECT
+        assert "CookingTimeRule could not be evaluated" in result.warning
+
+    def test_breakfast_score_is_calculated(self):
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.score == 1
+
+    def test_result_to_dict(self):
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+        output = result.to_dict()
+
+        assert output["status"] == "ACCEPT"
+        assert output["score"] == 1
+        assert output["warning"] is None
