@@ -83,63 +83,86 @@ DEFAULT_DIETARY_CHECKS = {
 
 class DietaryRestrictionRule(RecipeRule):
 
-    def __init__(self, checks: dict[str, DietaryCheck] | None = None):
-        self.__checks = checks if checks is not None else dict(DEFAULT_DIETARY_CHECKS)
+    def __init__(self):
+    self.__checks = DEFAULT_DIETARY_CHECKS
 
-    @staticmethod
-    def _to_bool(value) -> bool:
+    def _to_bool(self, value):
         if isinstance(value, bool):
             return value
-        return str(value).strip().lower() == "true"
 
-    @staticmethod
-    def _find_allergen_matches(ingredient: str, allergen: str) -> list[str]:
-        """Return dictionary keys found as whole words/phrases inside the
-        ingredient name that map to the given allergen."""
+        if isinstance(value, str):
+            return value.strip().lower() in ["true", "yes"]
+
+        return bool(value)
+
+    def _find_allergen_matches(self, ingredient, allergen):
         matches = []
-        for key, allergens in INGREDIENT_ALLERGENS.items():
-            if allergen not in allergens:
-                continue
-            # \b ensures whole-word match: "egg" will not match "eggplant"
-            if re.search(rf"\b{re.escape(key)}\b", ingredient):
-                matches.append(key)
-        return matches
 
-    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        for key, allergens in INGREDIENT_ALLERGENS.items():
+            
+            # Check whether this ingredient is associated
+            # with the allergen being searched for.
+            if allergen in allergens:
+
+                # Match the ingredient name or phrase.
+                if re.search(
+                    rf"\b{re.escape(key)}\b",
+                    ingredient
+                ):
+                    matches.append(key)
+    
+    return matches
+
+    def evaluate(self, user_preferences, ai_response):
+
         dietary_info = ai_response["dietary_information"]
+
         failures = []
         unverified = []
 
-        # Get the ingredients used in the recipe
+        # Extract the recipe ingredient names.
         recipe_ingredients = [
             item["name"].strip().lower()
             for item in ai_response["ingredients"]
         ]
 
+        # Check each dietary restriction selected by the user.
         for restriction in user_preferences["dietary_restrictions"]:
             key = restriction.strip().lower()
+            
+            # Check restrictions that use AI dietary information.
             check = self.__checks.get(key)
+    
+            if check is not None:
+                actual = self._to_bool(
+                    dietary_info[check.ai_field]
+                )
 
-            if check is None:
-                unverified.append(restriction)
-                continue
+                if actual != check.required_value:
+                    failures.append(check.warning)
 
-            # Check the AI's declared dietary information
-            actual = self._to_bool(dietary_info[check.ai_field])
-
-            if actual != check.required_value:
-                failures.append(check.warning)
-
-            # Check the actual recipe ingredients (whole-word match)
-            if key == "no peanuts":
+            # Check restrictions using the allergen dictionary.
+            allergens = ALLERGEN_RESTRICTIONS.get(key)
+            
+            if allergens is not None:
                 for ingredient in recipe_ingredients:
-                    matched = self._find_allergen_matches(ingredient, "peanuts")
-                    if matched:
-                        failures.append(
-                            f"The recipe contains {ingredient}, "
-                            "which may contain peanuts."
+                    for allergen in allergens:
+                        matched = self._find_allergen_matches(
+                            ingredient, allergen
                         )
 
+                        if matched:
+                            failures.append(
+                                f"The recipe contains {ingredient}, "
+                                f"which may contain {allergen}."
+                            )
+
+            # If neither method supports the restriction,
+            # mark it as unverified.
+            if check is None and allergens is None:
+                unverified.append(restriction)
+
+        # Remove duplicate warning messages.
         warnings = list(dict.fromkeys(failures))
 
         if unverified:
@@ -150,9 +173,8 @@ class DietaryRestrictionRule(RecipeRule):
 
         return RuleResult(
             passed=not failures,
-            warning=" ".join(warnings) if warnings else None,
+            warning=" ".join(warnings) if warnings else None
         )
-
 # breakfast preference scoring (soft preference, not a hard validation)
 class BreakfastPreferenceRule(RecipeRule):
  
