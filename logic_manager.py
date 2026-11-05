@@ -157,26 +157,29 @@ class MainIngredientRule(RecipeRule):
         return RuleResult(passed=True)
 
 # checks recipe for max 5 servings
-def check_max_servings(user_preference, ai_response):
-    user_servings = user_preference["servings"]
-    ai_servings = ai_response["servings"]
-
-    if ai_servings > 5:
-        return {
-            "passed": False,
-            "warning": f"This recipe serves more than 5 servings."
-        }
-
-    if ai_servings < user_servings:
-        return {
-            "passed": True,
-            "warning": f"This recipe can only serve {ai_servings} servings. Proceed only if you are okay with this."
-        }
-
-    return {
-        "passed": True,
-        "warning": None
-    }
+class ServingsRule(RecipeRule):
+ 
+    def __init__(self, max_servings: int = 5):
+        self.__max_servings = max_servings
+ 
+    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        requested = user_preferences["servings"]
+        actual = ai_response["servings"]
+ 
+        if actual > self.__max_servings:
+            return RuleResult(
+                passed=False,
+                warning=f"This recipe serves more than {self.__max_servings} people.",
+            )
+ 
+        if actual < requested:
+            return RuleResult(
+                passed=True,
+                warning=(f"This recipe serves {actual} people, "
+                         f"less than your requested {requested}. "
+                         "Proceed only if you are okay with this."),
+            )
+        return RuleResult(passed=True)
 
 def check_measurements(user_preference, ai_response):
     warnings = []
