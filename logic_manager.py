@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 import re
-from dictionary import INGREDIENT_ALLERGENS
+from dictionary import INGREDIENT_ALLERGENS, ALLERGEN_RESTRICTIONS
 
 class Status(Enum):
     ACCEPT = "ACCEPT"
