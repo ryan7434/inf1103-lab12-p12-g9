@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
+import re
+from dictionary import INGREDIENT_ALLERGENS
 
 class Status(Enum):
     ACCEPT = "ACCEPT"
@@ -80,48 +82,76 @@ DEFAULT_DIETARY_CHECKS = {
 }
 
 class DietaryRestrictionRule(RecipeRule):
- 
+
     def __init__(self, checks: dict[str, DietaryCheck] | None = None):
-        # New restrictions are added as data, not by editing an if/elif chain.
         self.__checks = checks if checks is not None else dict(DEFAULT_DIETARY_CHECKS)
- 
+
     @staticmethod
     def _to_bool(value) -> bool:
-        # Supports both JSON booleans and string values
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() == "true"
- 
+
+    @staticmethod
+    def _find_allergen_matches(ingredient: str, allergen: str) -> list[str]:
+        """Return dictionary keys found as whole words/phrases inside the
+        ingredient name that map to the given allergen."""
+        matches = []
+        for key, allergens in INGREDIENT_ALLERGENS.items():
+            if allergen not in allergens:
+                continue
+            # \b ensures whole-word match: "egg" will not match "eggplant"
+            if re.search(rf"\b{re.escape(key)}\b", ingredient):
+                matches.append(key)
+        return matches
+
     def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
         dietary_info = ai_response["dietary_information"]
         failures = []
         unverified = []
- 
+
+        # Get the ingredients used in the recipe
+        recipe_ingredients = [
+            item["name"].strip().lower()
+            for item in ai_response["ingredients"]
+        ]
+
         for restriction in user_preferences["dietary_restrictions"]:
             key = restriction.strip().lower()
             check = self.__checks.get(key)
- 
+
             if check is None:
                 unverified.append(restriction)
                 continue
- 
+
+            # Check the AI's declared dietary information
             actual = self._to_bool(dietary_info[check.ai_field])
+
             if actual != check.required_value:
                 failures.append(check.warning)
- 
-        warnings = list(failures)
+
+            # Check the actual recipe ingredients (whole-word match)
+            if key == "no peanuts":
+                for ingredient in recipe_ingredients:
+                    matched = self._find_allergen_matches(ingredient, "peanuts")
+                    if matched:
+                        failures.append(
+                            f"The recipe contains {ingredient}, "
+                            "which may contain peanuts."
+                        )
+
+        warnings = list(dict.fromkeys(failures))
+
         if unverified:
             warnings.append(
                 "Could not verify these restrictions: "
                 + ", ".join(unverified) + "."
             )
- 
-        # Unverifiable restrictions warn but do not reject.
+
         return RuleResult(
             passed=not failures,
             warning=" ".join(warnings) if warnings else None,
         )
-
 
 # breakfast preference scoring (soft preference, not a hard validation)
 class BreakfastPreferenceRule(RecipeRule):
