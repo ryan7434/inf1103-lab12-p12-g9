@@ -450,3 +450,38 @@ INGREDIENT_ALLERGENS = {
     "tahini": ["sesame"],
     "sesame paste": ["sesame"],
 }
+
+ALLERGEN_RESTRICTIONS = {
+    
+    "no peanuts": ["peanuts"],
+    "peanuts": ["peanuts"],
+
+    "nuts": ["nuts"],
+    "no nuts": ["nuts"],
+
+    "tree nuts": ["tree nuts"],
+    "no tree nuts": ["tree nuts"],
+
+    "dairy": ["dairy"],
+    "no dairy": ["dairy"],
+
+    "eggs": ["eggs"],
+    "no eggs": ["eggs"],
+
+    "soy": ["soy"],
+    "no soy": ["soy"],
+
+    "wheat": ["wheat/gluten"],
+    "gluten": ["wheat/gluten"],
+    "no gluten": ["wheat/gluten"],
+
+    "fish": ["fish"],
+    "no fish": ["fish"],
+
+    "shellfish": ["shellfish"],
+    "no shellfish": ["shellfish"],
+
+    "sesame": ["sesame"],
+    "no sesame": ["sesame"],
+}
+
