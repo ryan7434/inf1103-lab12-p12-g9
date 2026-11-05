@@ -54,3 +54,115 @@ class TestData:
         ai["ingredients"][index].update(changes)
         return ai
 
+# ==========================================
+# INDIVIDUAL RULE TESTS
+# ==========================================
+
+class TestIndividualRules:
+
+    def setup_method(self):
+        self.user = TestData.get_user()
+        self.ai = TestData.get_ai()
+
+    # Cooking time
+
+    def test_cooking_time_passes(self):
+        rule = lm.CookingTimeRule()
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+
+    def test_cooking_time_fails(self):
+        rule = lm.CookingTimeRule()
+        self.ai["cooking_time_minutes"] = 31
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "exceeding your 30-minute limit" in result.warning
+
+    # Dietary restrictions
+
+    def test_dietary_restrictions_pass(self):
+        rule = lm.DietaryRestrictionRule()
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+        assert result.warning is None
+
+    def test_dietary_restrictions_fail(self):
+        rule = lm.DietaryRestrictionRule()
+        self.ai["dietary_information"]["contains_peanuts"] = True
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "contains peanuts" in result.warning
+
+    def test_unverified_restriction_generates_warning(self):
+        rule = lm.DietaryRestrictionRule()
+        self.user["dietary_restrictions"].append("no seafood")
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+        assert "Could not verify" in result.warning
+
+    # Main ingredients
+
+    def test_main_ingredients_pass(self):
+        rule = lm.MainIngredientRule()
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+
+    def test_main_ingredients_fail(self):
+        rule = lm.MainIngredientRule()
+        self.ai["main_ingredients_used"] = ["egg", "milk"]
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+
+    # Servings
+
+    def test_servings_pass(self):
+        rule = lm.ServingsRule()
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+
+    def test_servings_fail(self):
+        rule = lm.ServingsRule()
+        self.ai["servings"] = 6
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+
+    # Measurements
+
+    def test_incompatible_units_generate_warning(self):
+        rule = lm.MeasurementRule()
+        self.ai["ingredients"][1]["unit"] = "ml"
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+        assert "Cannot compare" in result.warning
+
+    # Breakfast preference
+
+    def test_breakfast_preference_matches(self):
+        rule = lm.BreakfastPreferenceRule()
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.score == 1
+
+    def test_breakfast_preference_does_not_match(self):
+        rule = lm.BreakfastPreferenceRule()
+        self.ai["is_breakfast"] = False
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.score == 0
