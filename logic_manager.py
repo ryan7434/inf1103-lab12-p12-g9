@@ -66,29 +66,62 @@ class CookingTimeRule(RecipeRule):
         return RuleResult(passed=True)
 
 # dietary restrictions validation
-def validate_dietary_restriction(user_preference, ai_response):
-    dietary_restrictions = user_preference["dietary_restrictions"]
-    dietary_information = ai_response["dietary_information"]
+@dataclass(frozen=True)
+class DietaryCheck:
+    """Maps a user restriction to the AI field that verifies it."""
+    ai_field: str
+    required_value: bool
+    warning: str
+ 
+ 
+DEFAULT_DIETARY_CHECKS = {
+    "halal": DietaryCheck("halal_suitable", True, "The recipe may not be halal."),
+    "no peanuts": DietaryCheck("contains_peanuts", False, "The recipe contains peanuts."),
+}
 
-    for restriction in dietary_restrictions:
-        if restriction == "halal":
-            if dietary_information["halal_suitable"] != "True":
-                return {
-                    "passed": False,
-                    "warning": "The recipe may not be halal."
-                }
+class DietaryRestrictionRule(RecipeRule):
+ 
+    def __init__(self, checks: dict[str, DietaryCheck] | None = None):
+        # New restrictions are added as data, not by editing an if/elif chain.
+        self.__checks = checks if checks is not None else dict(DEFAULT_DIETARY_CHECKS)
+ 
+    @staticmethod
+    def _to_bool(value) -> bool:
+        # Supports both JSON booleans and string values
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() == "true"
+ 
+    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        dietary_info = ai_response["dietary_information"]
+        failures = []
+        unverified = []
+ 
+        for restriction in user_preferences["dietary_restrictions"]:
+            key = restriction.strip().lower()
+            check = self.__checks.get(key)
+ 
+            if check is None:
+                unverified.append(restriction)
+                continue
+ 
+            actual = self._to_bool(dietary_info[check.ai_field])
+            if actual != check.required_value:
+                failures.append(check.warning)
+ 
+        warnings = list(failures)
+        if unverified:
+            warnings.append(
+                "Could not verify these restrictions: "
+                + ", ".join(unverified) + "."
+            )
+ 
+        # Unverifiable restrictions warn but do not reject.
+        return RuleResult(
+            passed=not failures,
+            warning=" ".join(warnings) if warnings else None,
+        )
 
-        elif restriction == "no peanuts":
-            if dietary_information["contains_peanuts"] != "False":
-                return {
-                    "passed": False,
-                    "warning": "The recipe contains peanuts."
-                }
-
-    return {
-        "passed": True,
-        "warning": None
-    }
 
 # breakfast preference scoring (soft preference, not a hard validation)
 def score_breakfast_preference(user_input, ai_response):
