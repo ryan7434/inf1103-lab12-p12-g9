@@ -230,60 +230,69 @@ class MeasurementRule(RecipeRule):
         # Measurement problems are advisory, never a hard failure
         return RuleResult(passed=True, warning=" ".join(warnings) if warnings else None)
 
-def evaluate_recipe(user_preferences, ai_response):
-
-    cooking_time_ok = validate_cooking_time(
-        user_preferences,
-        ai_response
-    )
-    dietary_ok = validate_dietary_restriction(
-        user_preferences,
-        ai_response
-    )
-
-    ingredients_ok = check_main_ingredient(
-        user_preferences,
-        ai_response
-    )
-
-    servings_ok = check_max_servings(
-        user_preferences,
-        ai_response
-    )
-
-    measurements_ok = check_measurements(
-        user_preferences, 
-        ai_response
-    )
-
-    #A dict is always truthy even when passed=False, so a recipe that actually failed the cooking-time or 
-    # halal/peanut dietary check could still be returned as "ACCEPT" if the other checks passed
-    if (
-            ingredients_ok
-            and servings_ok["passed"]
-            and measurements_ok["passed"]
-            and cooking_time_ok["passed"]
-            and dietary_ok["passed"]
-        ):
-            return {
-            "status": "ACCEPT",
-            "reason": "Recipe meets all requirements.",
-            "warning": servings_ok["warning"] or measurements_ok["warning"] or cooking_time_ok["warning"] or dietary_ok["warning"]
-        }
-
-    return {
-        "status": "REJECT",
-        "reason": "Recipe does not meet all requirements.",
-        "warning": servings_ok["warning"] or measurements_ok["warning"] or cooking_time_ok["warning"] or dietary_ok["warning"]
-    }
-
+class LogicManager:
+ 
+    def __init__(self, rules: list[RecipeRule] | None = None):
+        # Composition: the manager owns its rules. Defaults are built here,
+        # but callers may supply their own (open for extension).
+        self.__rules = list(rules) if rules is not None else self._default_rules()
+ 
+    @staticmethod
+    def _default_rules() -> list[RecipeRule]:
+        return [
+            CookingTimeRule(),
+            DietaryRestrictionRule(),
+            MainIngredientRule(),
+            ServingsRule(),
+            MeasurementRule(),
+            BreakfastPreferenceRule(),
+        ]
+ 
+    def _run_rule(self, rule: RecipeRule, user_preferences: dict, ai_response: dict) -> RuleResult:
+        # Enforces the RecipeRule contract: always returns a RuleResult,
+        # so malformed AI output cannot crash the application.
+        try:
+            return rule.evaluate(user_preferences, ai_response)
+        except (KeyError, TypeError, ValueError, AttributeError) as error:
+            return RuleResult(
+                passed=False,
+                warning=f"{rule.name} could not be evaluated ({type(error).__name__}: {error}).",
+            )
+ 
+    def evaluate_recipe(self, user_preferences: dict, ai_response: dict) -> EvaluationResult:
+        # Polymorphism: every rule is used through the RecipeRule interface
+        results = [
+            self._run_rule(rule, user_preferences, ai_response)
+            for rule in self.__rules
+        ]
+ 
+        warnings = [r.warning for r in results if r.warning]
+        combined_warning = " ".join(warnings) if warnings else None
+        total_score = sum(r.score for r in results)
+ 
+        if any(not r.passed for r in results):
+            return EvaluationResult(
+                Status.REJECT,
+                "Recipe does not meet all requirements.",
+                total_score,
+                combined_warning,
+            )
+ 
+        return EvaluationResult(
+            Status.ACCEPT,
+            "Recipe meets all requirements.",
+            total_score,
+            combined_warning,
+        )
 
 if __name__ == "__main__":
-    with open("test_script_user_input.json", "r") as f:
-        user_response = json.load(f)
-    with open("test_script_AI.json", "r") as f:
-        ai_response = json.load(f)
+    import json
 
-    result = evaluate_recipe(user_response, ai_response)
-    print(result)
+    with open("test_script_user_input.json", "r") as file:
+        user_preferences = json.load(file)
 
+    with open("test_script_AI.json", "r") as file:
+        ai_response = json.load(file)
+
+    result = LogicManager().evaluate_recipe(user_preferences, ai_response)
+    print(result.to_dict())
