@@ -124,17 +124,11 @@ class DietaryRestrictionRule(RecipeRule):
 
 
 # breakfast preference scoring (soft preference, not a hard validation)
-def score_breakfast_preference(user_input, ai_response):
-    wants_breakfast = user_input["breakfast_preferred"]
-    is_breakfast_recipe = ai_response["is_breakfast"]
-
-    if not wants_breakfast:
-        return 0  # no preference stated, no bonus either way
-
-    if is_breakfast_recipe:
-        return 1  # matches preference, add to ranking score
-    else:
-        return 0  # doesn't match, but not rejected
+class BreakfastPreferenceRule(RecipeRule):
+ 
+    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        matches = bool(user_preferences["breakfast_preferred"]) and bool(ai_response["is_breakfast"])
+        return RuleResult(passed=True, score=1 if matches else 0)
 
 # checks recipe uses at least 3 of the user's ingredient input
 def check_main_ingredient(user_preference, ai_response):
