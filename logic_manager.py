@@ -189,6 +189,8 @@ class MeasurementRule(RecipeRule):
         "kg": ("mass", 1000),
         "ml": ("volume", 1),
         "l": ("volume", 1000),
+        "pieces": ("count", 1),
+        "piece": ("count", 1),
     }
  
     def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
