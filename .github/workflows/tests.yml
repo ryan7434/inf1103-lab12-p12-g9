@@ -1,18 +1,26 @@
 name: tests
+
 on:
   push:
   pull_request:
     branches: [main]
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Install test dependencies
+        run: python -m pip install pytest
+
       - name: Run unit tests
         run: python -m unittest discover -p "test_*.py" -v  #finds every file starting with test_ and runs all the tests in it
+
       - name: Run logic manager tests
         if: hashFiles('logic_manager_testing.py') != ''
         run: python logic_manager_testing.py
