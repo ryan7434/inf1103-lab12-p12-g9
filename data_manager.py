@@ -1,151 +1,127 @@
-import csv
+from abc import ABC, abstractmethod
 import json
 import os
 
-# Primary database CSV file name
-DATA_FILE = "recipes_history.csv"
 
-# Columns matching AI outputs, user inputs, and logic criteria
-FIELDNAMES = [
-    "record_id",
-    "timestamp",
-    "dish_name",
-    "matched_ingredients_count",
-    "used_ingredients",
-    "missing_ingredients",
-    "seasonings_suggested",
-    "cooking_time_mins",
-    "servings",
-    "cuisine",
-    "meal_type",
-    "taste_preference",
-    "dietary_restrictions",
-    "ai_insight",
-    "instructions",
-]
+class BaseDataManager(ABC):
+    """Abstract Base Class (Interface) defining the contract for data persistence layers."""
 
+    @abstractmethod
+    def init_storage(self) -> bool:
+        """Initialize underlying data storage."""
+        pass
 
-def init_data_storage(file_path=DATA_FILE):
-    """Initializes the CSV file with headers if it does not exist or is empty.
+    @abstractmethod
+    def save_record(self, record_dict: dict) -> bool:
+        """Save a new record to storage."""
+        pass
 
-    Prevents crashing on initial run.
-    """
-    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
-        try:
-            with open(file_path, mode="w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
-                writer.writeheader()
-        except Exception:
-            return False
-    return True
+    @abstractmethod
+    def load_records(self) -> list:
+        """Load all saved records."""
+        pass
+
+    @abstractmethod
+    def query_by_ingredient(self, ingredient_keyword: str) -> list:
+        """Query records by ingredient keyword."""
+        pass
+
+    @abstractmethod
+    def query_by_max_time(self, max_mins: int | float) -> list:
+        """Query records by maximum cooking time."""
+        pass
 
 
-def serialize_field(value):
-    """Converts lists or dictionaries to JSON strings so they store cleanly in CSV cells."""
-    if isinstance(value, (list, dict)):
-        return json.dumps(value)
-    return str(value) if value is not None else ""
+class JsonDataManager(BaseDataManager):
+    """Concrete implementation of BaseDataManager using a local JSON file backend."""
 
+    def __init__(self, file_path: str = "recipes_history.json"):
+        # Encapsulation: Storing file path as a protected attribute
+        self._file_path = file_path
+        self.init_storage()
 
-def deserialize_field(value):
-    """Parses JSON string values back into Python lists or dicts upon loading."""
-    if not value:
-        return ""
-    try:
-        return json.loads(value)
-    except (json.JSONDecodeError, TypeError):
-        return value
-
-
-def save_processed_record(record_dict, file_path=DATA_FILE):
-    """Appends a single processed recipe record to the CSV database file."""
-    init_data_storage(file_path)
-
-    row_data = {}
-    for field in FIELDNAMES:
-        val = record_dict.get(field, "")
-        row_data[field] = serialize_field(val)
-
-    try:
-        with open(file_path, mode="a", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
-            writer.writerow(row_data)
+    def init_storage(self) -> bool:
+        """Initializes the JSON file with an empty list if it does not exist or is empty."""
+        if not os.path.exists(self._file_path) or os.path.getsize(self._file_path) == 0:
+            try:
+                with open(self._file_path, mode="w", encoding="utf-8") as f:
+                    json.dump([], f, indent=4)
+                return True
+            except Exception:
+                return False
         return True
-    except Exception:
-        return False
 
+    def save_record(self, record_dict: dict) -> bool:
+        """Adds a recipe without overwriting invalid existing history."""
+        if not isinstance(record_dict, dict) or not self.init_storage():
+            return False
 
-def load_all_records(file_path=DATA_FILE):
-    """Loads all saved recipe records into memory on system startup or query.
+        try:
+            with open(self._file_path, encoding="utf-8") as f:
+                records = json.load(f)
 
-    Handles missing or corrupt files safely without crashing.
-    """
-    if not os.path.exists(file_path):
-        init_data_storage(file_path)
-        return []
+            if not (isinstance(records, list) and all(isinstance(r, dict) for r in records)):
+                return False
 
-    records = []
-    try:
-        with open(file_path, mode="r", newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
+            # Serialize before opening for write, so a failure can't truncate the file.
+            output = json.dumps(
+                records + [record_dict],
+                indent=4,
+                ensure_ascii=False,
+                allow_nan=False,
+            )
 
-            if reader.fieldnames != FIELDNAMES:
-                return []
+            with open(self._file_path, "w", encoding="utf-8") as f:
+                f.write(output)
+            return True
+        except (OSError, TypeError, ValueError):
+            return False
 
-            for row in reader:
-                deserialized_row = {}
-                for key, val in row.items():
-                    deserialized_row[key] = deserialize_field(val)
+    def load_records(self) -> list:
+        """Loads all saved recipe records into memory on system startup or query."""
+        if not os.path.exists(self._file_path):
+            self.init_storage()
+            return []
 
-                # Format numeric fields
-                if "matched_ingredients_count" in deserialized_row:
-                    try:
-                        deserialized_row["matched_ingredients_count"] = int(
-                            deserialized_row["matched_ingredients_count"]
-                        )
-                    except ValueError:
-                        pass
+        try:
+            with open(self._file_path, mode="r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if not content:
+                    return []
+                records = json.loads(content)
+            
+            if isinstance(records, list) and all(isinstance(record, dict) for record in records):
+                return records
 
-                if "cooking_time_mins" in deserialized_row:
-                    try:
-                        deserialized_row["cooking_time_mins"] = int(
-                            deserialized_row["cooking_time_mins"]
-                        )
-                    except ValueError:
-                        pass
+            return []
+        except (json.JSONDecodeError, Exception):
+            return []
 
-                records.append(deserialized_row)
-        return records
-    except Exception:
-        return []
+    def query_by_ingredient(self, ingredient_keyword: str) -> list:
+        """Filters database records by a specific ingredient name."""
+        all_records = self.load_records()
+        matching_records = []
+        keyword_clean = ingredient_keyword.strip().lower()
 
+        for rec in all_records:
+            used_ing = rec.get("used_ingredients", [])
+            if isinstance(used_ing, list):
+                if any(keyword_clean in str(item).lower() for item in used_ing):
+                    matching_records.append(rec)
+            elif isinstance(used_ing, str):
+                if keyword_clean in used_ing.lower():
+                    matching_records.append(rec)
 
-def query_records_by_ingredient(ingredient_keyword, file_path=DATA_FILE):
-    """Filters database records by a specific ingredient name."""
-    all_records = load_all_records(file_path)
-    matching_records = []
-    keyword_clean = ingredient_keyword.strip().lower()
+        return matching_records
 
-    for rec in all_records:
-        used_ing = rec.get("used_ingredients", [])
-        if isinstance(used_ing, list):
-            if any(keyword_clean in str(item).lower() for item in used_ing):
+    def query_by_max_time(self, max_mins: int | float) -> list:
+        """Filters database records by maximum cooking time limit."""
+        all_records = self.load_records()
+        matching_records = []
+
+        for rec in all_records:
+            time_val = rec.get("cooking_time_mins", 0)
+            if isinstance(time_val, (int, float)) and time_val <= max_mins:
                 matching_records.append(rec)
-        elif isinstance(used_ing, str):
-            if keyword_clean in used_ing.lower():
-                matching_records.append(rec)
 
-    return matching_records
-
-
-def query_records_by_max_time(max_mins, file_path=DATA_FILE):
-    """Filters database records by maximum cooking time limit."""
-    all_records = load_all_records(file_path)
-    matching_records = []
-
-    for rec in all_records:
-        time_val = rec.get("cooking_time_mins", 0)
-        if isinstance(time_val, int) and time_val <= max_mins:
-            matching_records.append(rec)
-
-    return matching_records
+        return matching_records
