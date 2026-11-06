@@ -15,6 +15,7 @@ class TestData:
             {"name": "egg", "amount": 4, "unit": "pieces"},
             {"name": "spinach", "amount": 200, "unit": "g"},
             {"name": "milk", "amount": 500, "unit": "ml"},
+            # {"name": "spicy satay sauce", "amount": 5, "unit": "tbsp"} for testing of the allergen detection
         ],
         "servings": 2,
     }
@@ -22,7 +23,7 @@ class TestData:
     ai = {
         "cooking_time_minutes": 20,
         "is_breakfast": True,
-        "main_ingredients_used": ["egg", "spinach", "milk"],
+        "main_ingredients_used": ["egg", "spinach", "milk"], #"spicy satay sauce"],
         "servings": 2,
         "dietary_information": {
             "halal_suitable": True,
@@ -32,6 +33,7 @@ class TestData:
             {"name": "egg", "amount": 2, "unit": "pieces"},
             {"name": "spinach", "amount": 100, "unit": "g"},
             {"name": "milk", "amount": 200, "unit": "ml"},
+            # {"name": "spicy satay sauce", "amount": 2, "unit": "tbsp"},
         ],
     }
 
