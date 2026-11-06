@@ -771,6 +771,198 @@ DIETARY_CHOICES = {
         "restricted_ingredients": set(),
 
     },
-
 }
 
+INGREDIENT_ALLERGENS = {
+
+    # Peanuts
+    "peanuts": ["peanuts", "nuts"],
+    "peanut butter": ["peanuts", "nuts"],
+    "groundnut": ["peanuts", "nuts"],
+    "groundnuts": ["peanuts", "nuts"],
+    "satay sauce": ["peanuts", "nuts"],
+    "peanut sauce": ["peanuts"],
+    "groundnut sauce": ["peanuts"],
+    "peanut butter": ["peanuts"],
+    "crushed peanuts": ["peanuts", "nuts"],
+    "chopped peanuts": ["peanuts", "nuts"],
+    "peanut oil": ["peanuts"],
+    "peanut powder": ["peanuts"],
+    "peanut flour": ["peanuts"],
+
+    # 2. Tree Nuts
+    "almond": ["tree nuts", "nuts"],
+    "almonds": ["tree nuts", "nuts"],
+    "almond milk": ["tree nuts", "nuts"],
+    "almond flour": ["tree nuts", "nuts"],
+    "cashew": ["tree nuts", "nuts"],
+    "cashews": ["tree nuts", "nuts"],
+    "cashew butter": ["tree nuts", "nuts"],
+    "pistachio": ["tree nuts", "nuts"],
+    "pistachios": ["tree nuts", "nuts"],
+    "walnut": ["tree nuts", "nuts"],
+    "walnuts": ["tree nuts", "nuts"],
+    "pecan": ["tree nuts", "nuts"],
+    "pecans": ["tree nuts", "nuts"],
+    "hazelnut": ["tree nuts", "nuts"],
+    "hazelnuts": ["tree nuts", "nuts"],
+    "macadamia": ["tree nuts", "nuts"],
+    "brazil nuts": ["tree nuts", "nuts"],
+
+    # 3. Dairy
+    "milk": ["dairy"],
+    "whole milk": ["dairy"],
+    "skim milk": ["dairy"],
+    "condensed milk": ["dairy"],
+    "evaporated milk": ["dairy"],
+    "milk powder": ["dairy"],
+    "cream": ["dairy"],
+    "heavy cream": ["dairy"],
+    "butter": ["dairy"],
+    "cheese": ["dairy"],
+    "cream cheese": ["dairy"],
+    "yogurt": ["dairy"],
+    "yoghurt": ["dairy"],
+    "ghee": ["dairy"],
+    "whey": ["dairy"],
+    "casein": ["dairy"],
+
+    # 4. Eggs
+    "egg": ["eggs"],
+    "eggs": ["eggs"],
+    "egg yolk": ["eggs"],
+    "egg white": ["eggs"],
+    "mayonnaise": ["eggs"],
+    "meringue": ["eggs"],
+    "egg powder": ["eggs"],
+    "dried egg": ["eggs"],
+
+    # 5. Soy
+    "soy": ["soy"],
+    "soya": ["soy"],
+    "soybean": ["soy"],
+    "soybeans": ["soy"],
+    "soy milk": ["soy"],
+    "soya milk": ["soy"],
+    "tofu": ["soy"],
+    "tempeh": ["soy"],
+    "miso": ["soy"],
+    "soy sauce": ["soy"],
+    "tamari": ["soy"],
+    "edamame": ["soy"],
+    "soy protein": ["soy"],
+    "soy flour": ["soy"],
+
+    # 6. Wheat / Gluten
+    "wheat": ["wheat/gluten"],
+    "wheat flour": ["wheat/gluten"],
+    "bread flour": ["wheat/gluten"],
+    "all-purpose flour": ["wheat/gluten"],
+    "plain flour": ["wheat/gluten"],
+    "whole wheat flour": ["wheat/gluten"],
+    "breadcrumbs": ["wheat/gluten"],
+    "bread": ["wheat/gluten"],
+    "pasta": ["wheat/gluten"],
+    "noodles": ["wheat/gluten"],
+    "udon": ["wheat/gluten"],
+    "seitan": ["wheat/gluten"],
+    "semolina": ["wheat/gluten"],
+    "barley": ["wheat/gluten"],
+    "rye": ["wheat/gluten"],
+    "couscous": ["wheat/gluten"],
+
+    # 7. Fish
+    "fish": ["fish"],
+    "salmon": ["fish"],
+    "tuna": ["fish"],
+    "cod": ["fish"],
+    "sardines": ["fish"],
+    "anchovies": ["fish"],
+    "fish sauce": ["fish"],
+    "fish paste": ["fish"],
+    "fish stock": ["fish"],
+
+    # 8. Crustaceans / Shellfish
+    "shrimp": ["shellfish"],
+    "prawn": ["shellfish"],
+    "prawns": ["shellfish"],
+    "crab": ["shellfish"],
+    "lobster": ["shellfish"],
+    "crayfish": ["shellfish"],
+    "shrimp paste": ["shellfish"],
+    "belacan": ["shellfish"],
+
+    # 9. Molluscs
+    "oyster": ["shellfish"],
+    "oyster sauce": ["shellfish"],
+    "mussels": ["shellfish"],
+    "clams": ["shellfish"],
+    "squid": ["shellfish"],
+    "octopus": ["shellfish"],
+
+    # 10. Sesame
+    "sesame": ["sesame"],
+    "sesame seeds": ["sesame"],
+    "black sesame": ["sesame"],
+    "white sesame": ["sesame"],
+    "sesame oil": ["sesame"],
+    "tahini": ["sesame"],
+    "sesame paste": ["sesame"],
+}
+
+ALLERGEN_RESTRICTIONS = {
+    
+    "no peanuts": ["peanuts"],
+    "peanuts": ["peanuts"],
+
+    "nuts": ["nuts"],
+    "no nuts": ["nuts"],
+
+    "tree nuts": ["tree nuts"],
+    "no tree nuts": ["tree nuts"],
+
+    "dairy": ["dairy"],
+    "no dairy": ["dairy"],
+
+    "eggs": ["eggs"],
+    "no eggs": ["eggs"],
+
+    "soy": ["soy"],
+    "no soy": ["soy"],
+
+    "wheat": ["wheat/gluten"],
+    "gluten": ["wheat/gluten"],
+    "no gluten": ["wheat/gluten"],
+
+    "fish": ["fish"],
+    "no fish": ["fish"],
+
+    "shellfish": ["shellfish"],
+    "no shellfish": ["shellfish"],
+
+    "sesame": ["sesame"],
+    "no sesame": ["sesame"],
+}
+
+class IngredientCatalog:
+    """Provides ingredient normalisation and staple lookups."""
+
+    def __init__(self, aliases=None, staple_ingredients=None):
+        if aliases is None:
+            aliases = INGREDIENT_ALIASES
+
+        if staple_ingredients is None:
+            staple_ingredients = STAPLE_INGREDIENTS
+
+        self._aliases = dict(aliases)
+        self._staples = frozenset(
+            self.normalise(item)
+            for item in staple_ingredients
+        )
+
+    def normalise(self, text):
+        cleaned_text = " ".join(text.lower().split())
+        return self._aliases.get(cleaned_text, cleaned_text)
+
+    def is_staple(self, ingredient):
+        return self.normalise(ingredient) in self._staples

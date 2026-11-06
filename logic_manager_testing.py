@@ -1,137 +1,381 @@
-#Test inputs are stored as Python dictionaries and not JSON file
-#The data is passed directly to the logic manager without external file dependencies
-
-
 import copy
 import logic_manager as lm
 
-user = {
-    "maximum_cooking_time": 30,
-    "restricted_ingredients": ["pork", "peanut"],
-    "breakfast_preferred": True,
-    "available_ingredients": [
-        {"name": "egg", "amount": 4, "unit": "pieces"},
-        {"name": "spinach", "amount": 200, "unit": "g"},
-        {"name": "milk", "amount": 500, "unit": "ml"},
-    ],
-    "servings": 2,
-}
 
-ai = {
-    "cooking_time_minutes": 20,
-    "is_breakfast": True,
-    "main_ingredients_used": ["egg", "spinach", "milk"],
-    "servings": 2,
-    "ingredients": [
-        {"name": "egg", "amount": 2, "unit": "pieces"},
-        {"name": "spinach", "amount": 100, "unit": "g"},
-        {"name": "milk", "amount": 200, "unit": "ml"},
-    ],
-    "seasonings": ["salt", "pepper"],
-}
+# ==========================================
+# TEST DATA CLASS
+# ==========================================
+
+class TestData:
+
+    user = {
+        "maximum_cooking_time": 30,
+        "dietary_restrictions": ["halal", "no peanuts"],
+        "breakfast_preferred": True,
+        "available_ingredients": [
+            {"name": "egg", "amount": 4, "unit": "pieces"},
+            {"name": "spinach", "amount": 200, "unit": "g"},
+            {"name": "milk", "amount": 500, "unit": "ml"},
+        ],
+        "servings": 2,
+    }
+
+    ai = {
+        "cooking_time_minutes": 20,
+        "is_breakfast": True,
+        "main_ingredients_used": ["egg", "spinach", "milk"],
+        "servings": 2,
+        "dietary_information": {
+            "halal_suitable": True,
+            "contains_peanuts": False,
+        },
+        "ingredients": [
+            {"name": "egg", "amount": 2, "unit": "pieces"},
+            {"name": "spinach", "amount": 100, "unit": "g"},
+            {"name": "milk", "amount": 200, "unit": "ml"},
+        ],
+    }
+
+    @classmethod
+    def get_user(cls):
+        return copy.deepcopy(cls.user)
+
+    @classmethod
+    def get_ai(cls):
+        return copy.deepcopy(cls.ai)
+
+    @classmethod
+    def variant(cls, base, **changes):
+        return {**copy.deepcopy(base), **changes}
+
+    @classmethod
+    def ingredient_variant(cls, index, **changes):
+        ai = cls.get_ai()
+        ai["ingredients"][index].update(changes)
+        return ai
+
+# ==========================================
+# INDIVIDUAL RULE TESTS
+# ==========================================
+
+class TestIndividualRules:
+
+    def setup_method(self):
+        self.user = TestData.get_user()
+        self.ai = TestData.get_ai()
+
+    # Cooking time
+
+    def test_cooking_time_passes(self):
+        rule = lm.CookingTimeRule()
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+
+    def test_cooking_time_fails(self):
+        rule = lm.CookingTimeRule()
+        self.ai["cooking_time_minutes"] = 31
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "exceeding your 30-minute limit" in result.warning
+
+    # Dietary restrictions
+
+    def test_dietary_restrictions_pass(self):
+        rule = lm.DietaryRestrictionRule()
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+        assert result.warning is None
+
+    def test_dietary_restrictions_fail(self):
+        rule = lm.DietaryRestrictionRule()
+        self.ai["dietary_information"]["contains_peanuts"] = True
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "contains peanuts" in result.warning
+
+    
+    def test_peanut_ingredient_detected(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.ai["dietary_information"]["contains_peanuts"] = False
+        self.ai["ingredients"].append({
+            "name": "peanut butter",
+            "amount": 20,
+            "unit": "g"
+        })
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "peanut butter" in result.warning.lower()
+
+    def test_general_nut_restriction_detects_almonds(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["nuts"]
+
+        self.ai["ingredients"].append({
+            "name": "almonds",
+            "amount": 50,
+            "unit": "g"
+        })
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "almonds" in result.warning.lower()
+
+    def test_tree_nut_restriction_detects_cashews(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["tree nuts"]
+
+        self.ai["ingredients"].append({
+            "name": "cashews",
+            "amount": 30,
+            "unit": "g"
+        })
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "cashews" in result.warning.lower()
+
+    def test_dairy_restriction_detects_milk(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["no dairy"]
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "milk" in result.warning.lower()
+
+    def test_egg_restriction_detects_egg(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["no eggs"]
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "egg" in result.warning.lower()
+
+    def test_soy_restriction_detects_tofu(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["no soy"]
+
+        self.ai["ingredients"].append({
+            "name": "tofu",
+            "amount": 100,
+            "unit": "g"
+        })
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "tofu" in result.warning.lower()
+
+    def test_gluten_restriction_detects_bread(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["no gluten"]
+
+        self.ai["ingredients"].append({
+            "name": "bread",
+            "amount": 2,
+            "unit": "slices"
+        })
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+        assert "bread" in result.warning.lower()
+
+    def test_no_allergen_detected(self):
+        rule = lm.DietaryRestrictionRule()
+
+        self.user["dietary_restrictions"] = ["no peanuts"]
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
 
 
-def variant(base, **changes):
-    #copy of base with some fields replaced.
-    return {**copy.deepcopy(base), **changes}
+    def test_unverified_restriction_generates_warning(self):
+        rule = lm.DietaryRestrictionRule()
+        self.user["dietary_restrictions"].append("no seafood")
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+        assert "Could not verify" in result.warning
+
+    # Main ingredients
+
+    def test_main_ingredients_pass(self):
+        rule = lm.MainIngredientRule()
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+
+    def test_main_ingredients_fail(self):
+        rule = lm.MainIngredientRule()
+        self.ai["main_ingredients_used"] = ["egg", "milk"]
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+
+    # Servings
+
+    def test_servings_pass(self):
+        rule = lm.ServingsRule()
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+
+    def test_servings_fail(self):
+        rule = lm.ServingsRule()
+        self.ai["servings"] = 6
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is False
+
+    # Measurements
+
+    def test_incompatible_units_generate_warning(self):
+        rule = lm.MeasurementRule()
+        self.ai["ingredients"][1]["unit"] = "ml"
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.passed is True
+        assert "Cannot compare" in result.warning
+
+    # Breakfast preference
+
+    def test_breakfast_preference_matches(self):
+        rule = lm.BreakfastPreferenceRule()
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.score == 1
+
+    def test_breakfast_preference_does_not_match(self):
+        rule = lm.BreakfastPreferenceRule()
+        self.ai["is_breakfast"] = False
+
+        result = rule.evaluate(self.user, self.ai)
+
+        assert result.score == 0
+
+# ==========================================
+# LOGIC MANAGER TESTS
+# ==========================================
+
+class TestLogicManager:
+
+    def setup_method(self):
+        self.manager = lm.LogicManager()
+        self.user = TestData.get_user()
+        self.ai = TestData.get_ai()
+
+    def test_valid_recipe_is_accepted(self):
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.ACCEPT
+        assert result.warning is None
+
+    def test_cooking_time_failure_rejects_recipe(self):
+        self.ai["cooking_time_minutes"] = 31
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.REJECT
+
+    def test_dietary_failure_rejects_recipe(self):
+        self.ai["dietary_information"]["contains_peanuts"] = True
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.REJECT
+
+    def test_insufficient_ingredients_rejects_recipe(self):
+        self.ai["main_ingredients_used"] = ["egg", "milk"]
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.REJECT
+
+    def test_excessive_servings_rejects_recipe(self):
+        self.ai["servings"] = 6
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.REJECT
+
+    def test_quantity_warning_does_not_reject_recipe(self):
+        self.ai["ingredients"][0]["amount"] = 5
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.ACCEPT
+        assert "but you have only" in result.warning
+
+    def test_breakfast_mismatch_does_not_reject_recipe(self):
+        self.ai["is_breakfast"] = False
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.ACCEPT
+        assert result.score == 0
+
+    def test_multiple_warnings_are_combined(self):
+        self.ai["ingredients"][0]["amount"] = 5
+        self.ai["servings"] = 1
+        self.ai["cooking_time_minutes"] = 31
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.REJECT
+        assert "exceeding your 30-minute limit" in result.warning
+        assert "but you have only" in result.warning
+        assert "less than your requested" in result.warning
+
+    def test_missing_ai_field_is_handled(self):
+        del self.ai["cooking_time_minutes"]
+
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.status == lm.Status.REJECT
+        assert "CookingTimeRule could not be evaluated" in result.warning
+
+    def test_breakfast_score_is_calculated(self):
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+
+        assert result.score == 1
+
+    def test_result_to_dict(self):
+        result = self.manager.evaluate_recipe(self.user, self.ai)
+        output = result.to_dict()
+
+        assert output["status"] == "ACCEPT"
+        assert output["score"] == 1
+        assert output["warning"] is None
 
 
-def ingredient_variant(index, **changes):
-    #copy of ai with one ingredient's fields replaced
-    d = copy.deepcopy(ai)
-    d["ingredients"][index].update(changes)
-    return d
+# ==========================================
+# RUNNING TESTS
+# ==========================================
 
-
-#shared variants
-invalid_ai = variant(ai, cooking_time_minutes=user["maximum_cooking_time"] + 1)
-restricted_user = variant(user, restricted_ingredients=["milk"])
-non_breakfast_ai = variant(ai, is_breakfast=False)
-few_ingredients_ai = variant(ai, main_ingredients_used=["egg", "milk"])
-too_many_servings_ai = variant(ai, servings=6)
-shortage_ai = ingredient_variant(
-    0, amount=user["available_ingredients"][0]["amount"] + 1
-)
-
-#cooking time
-assert lm.validate_cooking_time(user, ai)["passed"] is True
-assert lm.validate_cooking_time(user, invalid_ai)["passed"] is False
-print("PASS: cooking-time validation")
-
-#dietary restrictions (ingredients and seasonings)
-assert lm.validate_dietary_restriction(user, ai)["passed"] is True
-assert lm.validate_dietary_restriction(restricted_user, ai)["passed"] is False, \
-    "Restricted milk should be detected."
-soy_user = variant(user, restricted_ingredients=["soy sauce"])
-soy_ai = variant(ai, seasonings=ai["seasonings"] + ["soy sauce"])
-assert lm.validate_dietary_restriction(soy_user, soy_ai)["passed"] is False, \
-    "Restricted seasoning should be detected."
-print("PASS: dietary validation")
-
-#breakfast scoring
-assert lm.score_breakfast_preference(user, ai) == 1
-assert lm.score_breakfast_preference(user, non_breakfast_ai) == 0
-assert lm.score_breakfast_preference(
-    variant(user, breakfast_preferred=False), ai
-) == 0
-print("PASS: breakfast scoring")
-
-#main ingredient overlap
-assert lm.check_main_ingredient(user, ai) is True
-assert lm.check_main_ingredient(user, few_ingredients_ai) is False
-print("PASS: ingredient overlap")
-
-#servings
-assert lm.check_max_servings(user, ai)["passed"] is True
-assert lm.check_max_servings(user, too_many_servings_ai)["passed"] is False
-result = lm.check_max_servings(user, variant(ai, servings=1))
-assert result["passed"] is True and result["warning"] is not None, \
-    "Fewer servings should pass with a warning."
-print("PASS: servings validation")
-
-#quantities and measurement conversion
-result = lm.check_measurements(user, ai)
-assert result["passed"] is True and result["warning"] is None
-
-result = lm.check_measurements(user, shortage_ai)
-assert result["passed"] is True and "only have" in (result["warning"] or ""), \
-    "Shortage should be warning-only."
-
-for index, amount, unit in [(1, 0.1, "kg"), (2, 0.2, "L")]:
-    result = lm.check_measurements(
-        user, ingredient_variant(index, amount=amount, unit=unit)
-    )
-    assert result["warning"] is None, f"{amount} {unit} should fit."
-
-result = lm.check_measurements(user, ingredient_variant(1, unit="ml"))
-assert result["passed"] is True and "Cannot check" in (result["warning"] or ""), \
-    "Incompatible units should be warning-only."
-print("PASS: quantity checking")
-
-#overall evaluation
-result = lm.evaluate_recipe(user, ai)
-assert result["status"] == "ACCEPT" and result["warning"] is None
-
-for u, a, why in [
-    (user, invalid_ai, "over-limit time"),
-    (restricted_user, ai, "restricted ingredient"),
-    (user, few_ingredients_ai, "insufficient overlap"),
-    (user, too_many_servings_ai, "too many servings"),
-]:
-    assert lm.evaluate_recipe(u, a)["status"] == "REJECT", f"Should reject: {why}."
-
-result = lm.evaluate_recipe(user, shortage_ai)
-assert result["status"] == "ACCEPT" and result["warning"] is not None, \
-    "Quantity warning alone should not reject."
-assert lm.evaluate_recipe(user, non_breakfast_ai)["status"] == "ACCEPT", \
-    "Breakfast mismatch is a soft preference."
-
-#multiple warnings are kept.
-multi_ai = variant(shortage_ai, servings=1, cooking_time_minutes=31)
-result = lm.evaluate_recipe(restricted_user, multi_ai)
-assert result["status"] == "REJECT"
-for fragment in ["only serve", "only have", "exceeds", "restricted ingredients"]:
-    assert fragment in (result["warning"] or ""), f"Missing warning: {fragment!r}"
-print("PASS: overall evaluation")
-
-print("\nAll tests passed without calling the live AI.")
+if __name__ == "__main__":
+    import pytest
+    pytest.main(["-v", __file__])
