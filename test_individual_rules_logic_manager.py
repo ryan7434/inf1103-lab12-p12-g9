@@ -1,5 +1,5 @@
 import logic_manager as lm
-from test_data import TestData
+from test_data_logic_manager import TestData
 
 
 # ==========================================
