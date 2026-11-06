@@ -3,6 +3,7 @@ import IO_manager
 from ai_manager import AiManager
 import logic_manager
 import data_manager
+from data_manager import JsonDataManager
 
 from dictionary import (
     DIETARY_CHOICES,
@@ -11,7 +12,6 @@ from dictionary import (
 )
 
 from fractions import Fraction
-
 
 # io_manager -> ai_manager
 def build_ai_manager_input(req):
@@ -282,15 +282,16 @@ def main():
         reverse=True,
     )
     
-    # Step 4: persist each accepted recipe via data_manager.
-    existing_records = data_manager.load_all_records()
+    # Step 4: persist each accepted recipe via JsonDataManager object.
+    data_mgr = JsonDataManager()
+    existing_records = data_mgr.load_records()
     next_id = len(existing_records) + 1
 
     print(f"\n{len(accepted)} of {len(recipes)} generated recipe(s) passed validation:\n")
     for recipe, evaluation in accepted:
         record = build_data_manager_record(next_id, recipe, request, ai_input)
         record["ai_response"] = recipe
-        saved = data_manager.save_processed_record(record)
+        saved = data_mgr.save_record(record)
 
         print("=" * 60)
         print(
@@ -332,7 +333,7 @@ def main():
         if evaluation["warning"]:
             print(f"\nNote: {evaluation['warning']}")
         if not saved:
-            print(f"\n(Warning: could not save this recipe to {data_manager.DATA_FILE})")
+            print(f"\n(Warning: could not save this recipe to recipes_history.json)")
  
         print()
         next_id += 1
@@ -340,3 +341,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
