@@ -944,3 +944,25 @@ ALLERGEN_RESTRICTIONS = {
     "no sesame": ["sesame"],
 }
 
+class IngredientCatalog:
+    """Provides ingredient normalisation and staple lookups."""
+
+    def __init__(self, aliases=None, staple_ingredients=None):
+        if aliases is None:
+            aliases = INGREDIENT_ALIASES
+
+        if staple_ingredients is None:
+            staple_ingredients = STAPLE_INGREDIENTS
+
+        self._aliases = dict(aliases)
+        self._staples = frozenset(
+            self.normalise(item)
+            for item in staple_ingredients
+        )
+
+    def normalise(self, text):
+        cleaned_text = " ".join(text.lower().split())
+        return self._aliases.get(cleaned_text, cleaned_text)
+
+    def is_staple(self, ingredient):
+        return self.normalise(ingredient) in self._staples

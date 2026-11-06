@@ -2,9 +2,9 @@ from decimal import Decimal, InvalidOperation
 
 from dictionary import (
     DIETARY_CHOICES,
-    INGREDIENT_ALIASES,
-    STAPLE_INGREDIENTS,
+    IngredientCatalog,
 )
+
 
 UNIT_OPTIONS = {
     "1": "tbsp",
@@ -22,13 +22,13 @@ UNIT_OPTIONS = {
 OTHER_UNIT_OPTIONS = "10"
 
 UNIT_MAXIMUM_VALUES = {
-    "tbsp": Decimal("32"), #up to 2 cups
+    "tbsp": Decimal("32"),  #up to 2 cups
     "tsp": Decimal("96"),  #up to 32 tbsp/2 cups
     "slice": Decimal("20"),
     "clove": Decimal("30"),
     "g": Decimal("5000"),  #5kg
     "kg": Decimal("5"),
-    "ml": Decimal("5000"), #5L
+    "ml": Decimal("5000"),  #5L
     "l": Decimal("5"),
     "pieces": Decimal("30"),
 }
@@ -74,13 +74,16 @@ PRIMARY_DIETARY_CHOICES = {"1", "2", "3", "4"}
 NO_RESTRICTIONS_CHOICE = "6"
 CUSTOM_EXCLUSIONS_CHOICE = "5"
 
+_ingredient_catalog = IngredientCatalog()
+
 
 def normalise_text(text):
-    cleaned_text = " ".join(text.lower().split())  #Convert text to lowercase, remove extra spaces and apply ingredient aliases.
-    return INGREDIENT_ALIASES.get(cleaned_text, cleaned_text)
+    #Convert text to lowercase, remove extra spaces and apply ingredient aliases.
+    return _ingredient_catalog.normalise(text)
 
 
-def format_quantity(quantity): #display quantity without unnecessary trailing zeros or decimal point.
+def format_quantity(quantity):
+    #display quantity without unnecessary trailing zeros or decimal point.
     text = format(quantity, "f")
     return text.rstrip("0").rstrip(".") if "." in text else text
 
@@ -93,7 +96,7 @@ def get_yes_no(prompt):
             return True
 
         if response in {"n", "no"}:
-            return False #returns True for yes and False for no, keeps asking until valid input is received.
+            return False  #returns True for yes and False for no, keeps asking until valid input is received.
 
         print("Invalid input. Please enter Y or N.")
 
@@ -113,6 +116,7 @@ def choosing_options(title, options, prompt="Enter your choice: "):
 
         print(f"Invalid input. Enter a number from 1 to {len(options)}.")
 
+
 # ---------------
 # dietary details
 # ---------------
@@ -130,7 +134,8 @@ def display_dietary_choices():
 
 
 def validate_dietary_choices(choices_input):
-    choices = choices_input.replace(" ", "").split(",") #remove spaces so inputs like "2, 5" and "2,5" are handled the same.
+    #remove spaces so inputs like "2, 5" and "2,5" are handled the same.
+    choices = choices_input.replace(" ", "").split(",")
 
     #each tuple contains an invalid condition and its matching error message.
     #the first failed rule stops validation immediately.
@@ -172,48 +177,72 @@ def validate_dietary_choices(choices_input):
         if failed:
             print(message)
             return None
+
     return choices
 
 
 def get_food_exclusions(primary_choice):
     #option 5 on its own (primary_choice is None) has no automatic restrictions and user can enter up to 5 food exclusions/allergies.
     existing = (
-        set() if primary_choice is None
-        else {normalise_text(i) for i in DIETARY_CHOICES[primary_choice]["restricted_ingredients"]}
-)
+        set()
+        if primary_choice is None
+        else {
+            normalise_text(i)
+            for i in DIETARY_CHOICES[primary_choice]["restricted_ingredients"]
+        }
+    )
 
     while True:
         text = normalise_text(
-            input("\nEnter food exclusions/allergies separated by commas "
-                  "or type 'none'. ")
+            input(
+                "\nEnter food exclusions/allergies separated by commas "
+                "or type 'none'. "
+            )
         )
+
         if text == "none":
             return []
 
         # dict.fromkeys() de-duplicates while preserving the user's order.
-        items = list(dict.fromkeys(normalise_text(i) for i in text.split(",")))
+        items = list(
+            dict.fromkeys(normalise_text(i) for i in text.split(","))
+        )
         restricted = [i for i in items if i in existing]
 
-        error = next((message for failed, message in [
-            (not text,
-             "Invalid input. Enter up to five food exclusions/allergies, "
-             "or type 'none'."),
-
-            ("" in items,
-             "Invalid input. Separate each food with one comma and "
-             "kindly do not leave any item blank."),
-            (bool(restricted),
-             "These food items are already excluded by your selected "
-             f"dietary choices: {', '.join(restricted)}.\n"
-             "Kindly enter other food exclusions/allergies."),
-
-            (len(items) > 5,
-             "You are allowed to only enter a maximum of five "
-             "food exclusions/allergies."),
-        ] if failed), None)  #only show the error message whose validation condition failed otherwise return none
+        error = next(
+            (
+                message
+                for failed, message in [
+                    (
+                        not text,
+                        "Invalid input. Enter up to five food exclusions/allergies, "
+                        "or type 'none'.",
+                    ),
+                    (
+                        "" in items,
+                        "Invalid input. Separate each food with one comma and "
+                        "kindly do not leave any item blank.",
+                    ),
+                    (
+                        bool(restricted),
+                        "These food items are already excluded by your selected "
+                        f"dietary choices: {', '.join(restricted)}.\n"
+                        "Kindly enter other food exclusions/allergies.",
+                    ),
+                    (
+                        len(items) > 5,
+                        "You are allowed to only enter a maximum of five "
+                        "food exclusions/allergies.",
+                    ),
+                ]
+                if failed
+            ),
+            None,
+        )  #only show the error message whose validation condition failed otherwise return none
 
         if error is None:
             return items
+
         print(error)
 
 
@@ -279,15 +308,10 @@ def get_all_restricted_ingredients(dietary_details):
 
     return {normalise_text(item) for item in restricted}
 
+
 # -----------
 # Ingredients
 # -----------
-
-NORMALISED_STAPLES = {
-    normalise_text(staple)
-    for staple in STAPLE_INGREDIENTS
-}
-
 
 def get_unit_measurement():
     #user to select UOM from the given options or enter a custom unit, ensuring it contains letters only.
@@ -301,12 +325,18 @@ def get_unit_measurement():
         if choice != OTHER_UNIT_OPTIONS:
             return UNIT_OPTIONS[choice]
 
-        custom_unit = " ".join(input("Enter your unit of measurement: ").lower().split())
+        custom_unit = " ".join(
+            input("Enter your unit of measurement: ").lower().split()
+        )
 
-        if custom_unit.replace(" ", "").isalpha(): #accept only letters and spaces (reject numbers and special characters)
+        #accept only letters and spaces (reject numbers and special characters)
+        if custom_unit.replace(" ", "").isalpha():
             return custom_unit
 
-        print("Unit of measurement must contain letters only, for example: cups, pieces")
+        print(
+            "Unit of measurement must contain letters only, "
+            "for example: cups, pieces"
+        )
 
 
 def get_quantity(unit):
@@ -340,7 +370,10 @@ def get_quantity(unit):
         return quantity
 
 
-def get_valid_ingredient(entered_available_ingredients, restricted_ingredients):
+def get_valid_ingredient(
+    entered_available_ingredients,
+    restricted_ingredients,
+):
     #prompt the user to enter an ingredient name
     while True:
         ingredient_name = normalise_text(input("Enter ingredient name: "))
@@ -348,15 +381,18 @@ def get_valid_ingredient(entered_available_ingredients, restricted_ingredients):
         if not ingredient_name:
             print("Ingredient name cannot be blank.")
 
-        elif ingredient_name in entered_available_ingredients: #no duplicate ingredients allowed
-            print("You have already entered this ingredient.") 
+        elif ingredient_name in entered_available_ingredients:
+            #no duplicate ingredients allowed
+            print("You have already entered this ingredient.")
 
-        elif ingredient_name in NORMALISED_STAPLES: #not allowed to enter staple ingredients
+        elif _ingredient_catalog.is_staple(ingredient_name):
+            #not allowed to enter staple ingredients
             print(
                 f"'{ingredient_name}' is a basic staple and assumed available."
             )
 
-        elif ingredient_name in restricted_ingredients: #not allowed to enter ingredients from dietary restrictions or custom exclusions/allergies
+        elif ingredient_name in restricted_ingredients:
+            #not allowed to enter ingredients from dietary restrictions or custom exclusions/allergies
             print(
                 f"'{ingredient_name}' is not allowed under your dietary "
                 "preference or food exclusions/allergies."
@@ -387,22 +423,41 @@ def get_user_ingredients(dietary_details):
         entered_names = set()
 
         print("\nEnter 3 to 5 ingredients you currently have.")
-        print("Basic staples such as salt, oil, flour, and soy sauce are assumed available.")
-        print("Inputting ingredients from your dietary restrictions and exclusions/allergies will be deemed invalid.")
+        print(
+            "Basic staples such as salt, oil, flour, and soy sauce "
+            "are assumed available."
+        )
+        print(
+            "Inputting ingredients from your dietary restrictions and "
+            "exclusions/allergies will be deemed invalid."
+        )
 
-        while len(ingredients) < 5: #accepts ingredients until the user has entered 5 or atleast 3.
-            print(f"\nIngredient {len(ingredients) + 1}") #show the user the current ingredient number they are entering
+        #accepts ingredients until the user has entered 5 or atleast 3.
+        while len(ingredients) < 5:
+            #show the user the current ingredient number they are entering
+            print(f"\nIngredient {len(ingredients) + 1}")
 
-            name = get_valid_ingredient(entered_names, restricted_ingredients)
+            name = get_valid_ingredient(
+                entered_names,
+                restricted_ingredients,
+            )
             unit = get_unit_measurement()
             quantity = get_quantity(unit)
 
-            ingredients.append({"name": name, "quantity": quantity, "unit": unit})
+            ingredients.append({
+                "name": name,
+                "quantity": quantity,
+                "unit": unit,
+            })
             entered_names.add(name)
             print(f"{format_quantity(quantity)} {unit} of {name}")
 
-            if len(ingredients) < 3: #prompt user to add more ingredients if less than 3 entered
-                print(f"You must enter {3 - len(ingredients)} more ingredient(s).")
+            if len(ingredients) < 3:
+                #prompt user to add more ingredients if less than 3 entered
+                print(
+                    f"You must enter {3 - len(ingredients)} more ingredient(s)."
+                )
+
             elif len(ingredients) < 5 and not get_yes_no(
                 "\nWould you like to add another ingredient? (Y/N): "
             ):
@@ -413,7 +468,8 @@ def get_user_ingredients(dietary_details):
         if get_yes_no("\nAre these ingredients correct? (Y/N): "):
             return ingredients
 
-        print("\nKindly re-enter your ingredients again.") #if no, prompt user to re-enter ingredients
+        #if no, prompt user to re-enter ingredients
+        print("\nKindly re-enter your ingredients again.")
 
 
 # ------------------
@@ -424,7 +480,10 @@ def parse_choices(text, valid_options):
     #returns a list of unique choices from the input text, or None if invalid.
     choices = text.replace(" ", "").split(",")
 
-    if all(c in valid_options for c in choices) and len(set(choices)) == len(choices):
+    if (
+        all(c in valid_options for c in choices)
+        and len(set(choices)) == len(choices)
+    ):
         return choices
 
     return None
@@ -434,14 +493,14 @@ def get_breakfast_preference():
     return get_yes_no("\nDo you want a breakfast recipe? (Y/N): ")
 
 
-def get_cuisine_preference(): 
+def get_cuisine_preference():
     #choose between Chinese, Korean, Japanese, Indian, Western or Any cuisine preference.
     return CUISINE_OPTIONS[
         choosing_options("Choose your preferred cuisine:", CUISINE_OPTIONS)
     ]
 
 
-def get_taste_preferences(): 
+def get_taste_preferences():
     #choose up to 2 taste preferences or No preference (option 5) which must be selected alone.
     while True:
         print("\nChoose your taste preference(s):")
@@ -453,14 +512,20 @@ def get_taste_preferences():
         print("Option 5 must be selected alone.")
         print("Examples: 1 | 1, 3 | 3, 4 | 5")
 
-        choices = parse_choices(input("\nKindly enter your choice(s): "), TASTE_OPTIONS)
+        choices = parse_choices(
+            input("\nKindly enter your choice(s): "),
+            TASTE_OPTIONS,
+        )
 
         if choices is None:
             print("Invalid input. Enter unique options from 1 to 5.")
+
         elif "5" in choices and len(choices) > 1:
             print("Option 5, No preference, must be selected alone.")
+
         elif len(choices) > 2:
             print("You can only select a maximum of two taste preferences.")
+
         else:
             return [TASTE_OPTIONS[choice] for choice in choices]
 
@@ -470,11 +535,13 @@ def get_whole_number_in_range(prompt, minimum, maximum):
     while True:
         user_input = input(prompt).strip()
 
-        if not user_input: #reject blank input and restart the loop
+        if not user_input:
+            #reject blank input and restart the loop
             print("Input cannot be blank.")
             continue
 
-        if not user_input.isdecimal(): #digits only (rejects "1_0", "3.5", "-2" and text)
+        #digits only (rejects "1_0", "3.5", "-2" and text)
+        if not user_input.isdecimal():
             print("Invalid input. Please enter a whole number using digits only.")
             continue
 
@@ -493,14 +560,18 @@ def get_whole_number_in_range(prompt, minimum, maximum):
 def get_max_cooking_time():
     #max cooking time in minutues must be a whole number ranging from 5(inclusive) to 180(inclusive)
     return get_whole_number_in_range(
-        "\nMaximum cooking time in minutes (5-180): ", 5, 180
+        "\nMaximum cooking time in minutes (5-180): ",
+        5,
+        180,
     )
 
 
 def get_preferred_servings():
     #preferred number of servings must be a whole number ranging from 1 to 5
     return get_whole_number_in_range(
-        "\nPreferred number of servings (1-5): ", 1, 5
+        "\nPreferred number of servings (1-5): ",
+        1,
+        5,
     )
 
 
@@ -525,10 +596,12 @@ def collect_recipe_preferences(req):
         req["max_time"] = get_max_cooking_time()
         req["servings"] = get_preferred_servings()
 
-        if confirm_recipe_preferences(req): #stop collecting preferences once user enters yes.
+        if confirm_recipe_preferences(req):
+            #stop collecting preferences once user enters yes.
             return
 
-        print("\nKindly re-enter your recipe preferences again.") #if user enters no, prompt them to re-enter their preferences.
+        #if user enters no, prompt them to re-enter their preferences.
+        print("\nKindly re-enter your recipe preferences again.")
 
 
 # -------------------
@@ -561,7 +634,10 @@ def confirm_generate_recommendations():
 
 def get_edit_choice():
     #if user chooses no, then prompts user to selection which section they would like to edit
-    return choosing_options("Which section would you like to change?", EDIT_OPTIONS)
+    return choosing_options(
+        "Which section would you like to change?",
+        EDIT_OPTIONS,
+    )
 
 
 SIMPLE_EDITS = {
@@ -593,11 +669,14 @@ def edit_recipe_request(choice, req):
 
     elif choice == EDIT_RESTART:
         #confirm with the user if they are sure they want to restart the entire process
-        return not get_yes_no("\nThis will discard everything you had entered. Are you sure you wish to restart? (Y/N): ")
+        return not get_yes_no(
+            "\nThis will discard everything you had entered. "
+            "Are you sure you wish to restart? (Y/N): "
+        )
 
     else:
         key, ask = SIMPLE_EDITS[choice]
-        req[key] = ask() #get the new value and save it in the request dictionary
+        req[key] = ask()  #get the new value and save it in the request dictionary
 
     return True
 
@@ -622,5 +701,5 @@ def main():
                 break
 
 
-#if __name__ == "__main__":  #only run the main function if this script is executed directly, not when imported as a module
-    #request = main()
+#if __name__ == "__main__": #only run the main function if this script is executed directly, not when imported as a module
+#    request = main()
