@@ -172,10 +172,6 @@ class TestLogicManager:
         )
 
 
-# ==========================================
-# RUNNING TESTS
-# ==========================================
-
 if __name__ == "__main__":
     import pytest
     pytest.main(["-v", "-s", __file__])
