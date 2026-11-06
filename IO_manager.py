@@ -1,39 +1,9 @@
-from decimal import Decimal, InvalidOperation
+from console_IO_Manager import ConsoleIO
+from dietary_input_IO_Manager import DietaryInput
+from ingredient_input_IO_Manager import IngredientInput
 
-from console_io import ConsoleIO
-from dietary_input import DietaryInput
+from dictionary import IngredientCatalog
 
-from dictionary import (
-    IngredientCatalog,
-)
-
-
-UNIT_OPTIONS = {
-    "1": "tbsp",
-    "2": "tsp",
-    "3": "slice",
-    "4": "clove",
-    "5": "g",
-    "6": "kg",
-    "7": "ml",
-    "8": "L",
-    "9": "pieces",
-    "10": "Other (type your own unit)",
-}
-
-OTHER_UNIT_OPTIONS = "10"
-
-UNIT_MAXIMUM_VALUES = {
-    "tbsp": Decimal("32"),  #up to 2 cups
-    "tsp": Decimal("96"),  #up to 32 tbsp/2 cups
-    "slice": Decimal("20"),
-    "clove": Decimal("30"),
-    "g": Decimal("5000"),  #5kg
-    "kg": Decimal("5"),
-    "ml": Decimal("5000"),  #5L
-    "l": Decimal("5"),
-    "pieces": Decimal("30"),
-}
 
 CUISINE_OPTIONS = {
     "1": "Chinese",
@@ -72,32 +42,30 @@ EDIT_OPTIONS = {
     EDIT_RESTART: "Restart everything",
 }
 
+
 _ingredient_catalog = IngredientCatalog()
 
-
 _console_io = ConsoleIO()
-get_yes_no = _console_io.get_yes_no
-choosing_options = _console_io.choosing_options
-get_whole_number_in_range = _console_io.get_whole_number_in_range
+
 _dietary_input = DietaryInput(
     console=_console_io,
     ingredient_catalog=_ingredient_catalog,
 )
 
-
-def first_error(rules):
-    #returns the message of the first (failed, message) rule that failed, otherwise None.
-    return next((message for failed, message in rules if failed), None)
-
-
-def normalise_text(text):
-    #Convert text to lowercase, remove extra spaces and apply ingredient aliases.
-    return _ingredient_catalog.normalise(text)
+_ingredient_input = IngredientInput(
+    console=_console_io,
+    ingredient_catalog=_ingredient_catalog,
+    dietary_input=_dietary_input,
+)
 
 
-def format_quantity(quantity):
-    #display quantity without unnecessary trailing zeros or decimal point.
-    return format(quantity.normalize(), "f")
+# Keep existing function names available during the staged refactor.
+get_yes_no = _console_io.get_yes_no
+choosing_options = _console_io.choosing_options
+get_whole_number_in_range = _console_io.get_whole_number_in_range
+
+normalise_text = _ingredient_catalog.normalise
+format_quantity = _ingredient_input.format_quantity
 
 
 # ---------------
@@ -120,148 +88,11 @@ get_all_restricted_ingredients = (
 # Ingredients
 # -----------
 
-def get_unit_measurement():
-    #user to select UOM from the given options or enter a custom unit, ensuring it contains letters only.
-    while True:
-        choice = choosing_options(
-            "Please choose a unit of measurement:",
-            UNIT_OPTIONS,
-            "Enter your selected unit of measurement: ",
-        )
-
-        if choice != OTHER_UNIT_OPTIONS:
-            return UNIT_OPTIONS[choice]
-
-        custom_unit = " ".join(
-            input("Enter your unit of measurement: ").lower().split()
-        )
-
-        #accept only letters and spaces (reject numbers and special characters)
-        if custom_unit.replace(" ", "").isalpha():
-            return custom_unit
-
-        print(
-            "Unit of measurement must contain letters only, "
-            "for example: cups, pieces"
-        )
-
-
-def get_quantity(unit):
-    #user to enter a quantity for the given unit, ensuring it is a number > 0 and within the maximum allowed for that unit.
-    maximum = UNIT_MAXIMUM_VALUES.get(unit.lower(), Decimal("100"))
-
-    while True:
-        quantity_input = input("Enter quantity: ").strip()
-
-        if not quantity_input:
-            print("Quantity cannot be blank. Kindly enter a number.")
-            continue
-
-        try:
-            quantity = Decimal(quantity_input)
-        except InvalidOperation:
-            print("Invalid quantity. Kindly enter a number greater than zero.")
-            continue
-
-        if not quantity.is_finite() or quantity <= 0:
-            print("Quantity must be a number greater than zero.")
-            continue
-
-        if quantity > maximum:
-            print(
-                f"Quantity is too large. "
-                f"Maximum for {unit}: {format_quantity(maximum)}."
-            )
-            continue
-
-        return quantity
-
-
-def get_valid_ingredient(entered_available_ingredients, restricted_ingredients):
-    #prompt the user to enter an ingredient name
-    while True:
-        name = normalise_text(input("Enter ingredient name: "))
-
-        error = first_error([
-            (not name, "Ingredient name cannot be blank."),
-            #no duplicate ingredients allowed
-            (
-                name in entered_available_ingredients,
-                "You have already entered this ingredient.",
-            ),
-            #not allowed to enter staple ingredients
-            (
-                _ingredient_catalog.is_staple(name),
-                f"'{name}' is a basic staple and assumed available.",
-            ),
-            #not allowed to enter ingredients from dietary restrictions or custom exclusions/allergies
-            (
-                name in restricted_ingredients,
-                f"'{name}' is not allowed under your dietary "
-                "preference or food exclusions/allergies.",
-            ),
-        ])
-
-        if error is None:
-            return name
-
-        print(error)
-
-
-def display_ingredients(ingredients):
-    #display the list of ingredients entered with their quantities and units.
-    print("\nIngredients entered:")
-
-    for number, i in enumerate(ingredients, start=1):
-        print(f"{number}. {i['name']} - {format_quantity(i['quantity'])} {i['unit']}")
-
-
-def get_user_ingredients(dietary_details):
-    restricted_ingredients = get_all_restricted_ingredients(dietary_details)
-
-    while True:
-        ingredients = []
-        entered_names = set()
-
-        print("\nEnter 3 to 5 ingredients you currently have.")
-        print(
-            "Basic staples such as salt, oil, flour, and soy sauce "
-            "are assumed available."
-        )
-        print(
-            "Inputting ingredients from your dietary restrictions and "
-            "exclusions/allergies will be deemed invalid."
-        )
-
-        #accepts ingredients until the user has entered 5 or atleast 3.
-        while len(ingredients) < 5:
-            #show the user the current ingredient number they are entering
-            print(f"\nIngredient {len(ingredients) + 1}")
-
-            name = get_valid_ingredient(entered_names, restricted_ingredients)
-            unit = get_unit_measurement()
-            quantity = get_quantity(unit)
-
-            ingredients.append({"name": name, "quantity": quantity, "unit": unit})
-            entered_names.add(name)
-            print(f"{format_quantity(quantity)} {unit} of {name}")
-
-            if len(ingredients) < 3:
-                #prompt user to add more ingredients if less than 3 entered
-                print(f"You must enter {3 - len(ingredients)} more ingredient(s).")
-
-            elif len(ingredients) < 5 and not get_yes_no(
-                "\nWould you like to add another ingredient? (Y/N): "
-            ):
-                break
-
-        display_ingredients(ingredients)
-
-        if get_yes_no("\nAre these ingredients correct? (Y/N): "):
-            return ingredients
-
-        #if no, prompt user to re-enter ingredients
-        print("\nKindly re-enter your ingredients again.")
+get_unit_measurement = _ingredient_input.get_unit_measurement
+get_quantity = _ingredient_input.get_quantity
+get_valid_ingredient = _ingredient_input.get_valid_ingredient
+display_ingredients = _ingredient_input.display_ingredients
+get_user_ingredients = _ingredient_input.get_user_ingredients
 
 
 # ------------------
@@ -272,7 +103,10 @@ def parse_choices(text, valid_options):
     #returns a list of unique choices from the input text, or None if invalid.
     choices = text.replace(" ", "").split(",")
 
-    if all(c in valid_options for c in choices) and len(set(choices)) == len(choices):
+    if (
+        all(choice in valid_options for choice in choices)
+        and len(set(choices)) == len(choices)
+    ):
         return choices
 
     return None
@@ -285,7 +119,10 @@ def get_breakfast_preference():
 def get_cuisine_preference():
     #choose between Chinese, Korean, Japanese, Indian, Western or Any cuisine preference.
     return CUISINE_OPTIONS[
-        choosing_options("Choose your preferred cuisine:", CUISINE_OPTIONS)
+        choosing_options(
+            "Choose your preferred cuisine:",
+            CUISINE_OPTIONS,
+        )
     ]
 
 
@@ -322,19 +159,23 @@ def get_taste_preferences():
 def get_max_cooking_time():
     #max cooking time in minutues must be a whole number ranging from 5(inclusive) to 180(inclusive)
     return get_whole_number_in_range(
-        "\nMaximum cooking time in minutes (5-180): ", 5, 180
+        "\nMaximum cooking time in minutes (5-180): ",
+        5,
+        180,
     )
 
 
 def get_preferred_servings():
     #preferred number of servings must be a whole number ranging from 1 to 5
     return get_whole_number_in_range(
-        "\nPreferred number of servings (1-5): ", 1, 5
+        "\nPreferred number of servings (1-5): ",
+        1,
+        5,
     )
 
 
 def print_preferences(req, taste_label):
-    #prints the five recipe preference lines shared by the confirmation and the summary (taste_label keeps each screen's original wording).
+    #prints preference lines shared by the confirmation and summary.
     print(f"Breakfast preferred: {'Yes' if req['breakfast'] else 'No'}")
     print(f"Cuisine preference: {req['cuisine']}")
     print(f"{taste_label}: {', '.join(req['tastes'])}")
@@ -343,7 +184,7 @@ def print_preferences(req, taste_label):
 
 
 def confirm_recipe_preferences(req):
-    #confirm the following recipe preferences entered by the user: breakfast,cuisine, taste, time and servings.
+    #confirm the recipe preferences entered by the user.
     print("\nPlease confirm your recipe preferences:")
     print_preferences(req, "Taste preference(s)")
 
@@ -372,12 +213,14 @@ def collect_recipe_preferences(req):
 # -------------------
 
 def display_recipe_request_summary(req):
-    #display a full summary of whatever the user has entered
+    #display a full summary of whatever the user has entered.
     dietary = req["dietary"]
     exclusions = dietary["custom_exclusions"]
+
     ingredient_list = ", ".join(
-        f"{i['name']} ({format_quantity(i['quantity'])} {i['unit']})"
-        for i in req["ingredients"]
+        f"{ingredient['name']} "
+        f"({format_quantity(ingredient['quantity'])} {ingredient['unit']})"
+        for ingredient in req["ingredients"]
     )
 
     print("\nPlease review your recipe request:")
@@ -392,12 +235,15 @@ def confirm_generate_recommendations():
 
 
 def get_edit_choice():
-    #if user chooses no, then prompts user to selection which section they would like to edit
-    return choosing_options("Which section would you like to change?", EDIT_OPTIONS)
+    #ask which section the user would like to edit.
+    return choosing_options(
+        "Which section would you like to change?",
+        EDIT_OPTIONS,
+    )
 
 
 SIMPLE_EDITS = {
-    #only requires a single function call to get the new value for the selected section
+    #only requires a single function call to get the new value.
     EDIT_BREAKFAST: ("breakfast", get_breakfast_preference),
     EDIT_CUISINE: ("cuisine", get_cuisine_preference),
     EDIT_TASTES: ("tastes", get_taste_preferences),
@@ -420,11 +266,11 @@ def edit_recipe_request(choice, req):
         req["ingredients"] = get_user_ingredients(req["dietary"])
 
     elif choice == EDIT_INGREDIENTS:
-        #re-enter only the ingredient list while current dietary details remains intact
+        #re-enter ingredients while keeping the current dietary details.
         req["ingredients"] = get_user_ingredients(req["dietary"])
 
     elif choice == EDIT_RESTART:
-        #confirm with the user if they are sure they want to restart the entire process
+        #confirm whether the user wants to restart the entire process.
         return not get_yes_no(
             "\nThis will discard everything you had entered. "
             "Are you sure you wish to restart? (Y/N): "
@@ -432,7 +278,7 @@ def edit_recipe_request(choice, req):
 
     else:
         key, ask = SIMPLE_EDITS[choice]
-        req[key] = ask()  #get the new value and save it in the request dictionary
+        req[key] = ask()
 
     return True
 
@@ -452,9 +298,11 @@ def main():
                 return req
 
             if not edit_recipe_request(get_edit_choice(), req):
-                print("\nKindly restart your recipe request from the beginning.")
+                print(
+                    "\nKindly restart your recipe request from the beginning."
+                )
                 break
 
 
-#if __name__ == "__main__": #only run the main function if this script is executed directly, not when imported as a module
+#if __name__ == "__main__": #only run directly, not when imported.
 #    request = main()
