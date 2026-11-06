@@ -5,6 +5,12 @@ class ConsoleIO:
         self._input = input if input_func is None else input_func
         self._output = print if output_func is None else output_func
 
+    def read(self, prompt):
+        return self._input(prompt)
+
+    def write(self, message):
+        self._output(message)
+
     def get_yes_no(self, prompt):
         while True:
             response = self._input(prompt).strip().lower()

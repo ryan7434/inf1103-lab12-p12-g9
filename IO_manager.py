@@ -1,9 +1,9 @@
 from decimal import Decimal, InvalidOperation
 
 from console_io import ConsoleIO
+from dietary_input import DietaryInput
 
 from dictionary import (
-    DIETARY_CHOICES,
     IngredientCatalog,
 )
 
@@ -72,10 +72,6 @@ EDIT_OPTIONS = {
     EDIT_RESTART: "Restart everything",
 }
 
-PRIMARY_DIETARY_CHOICES = {"1", "2", "3", "4"}
-NO_RESTRICTIONS_CHOICE = "6"
-CUSTOM_EXCLUSIONS_CHOICE = "5"
-
 _ingredient_catalog = IngredientCatalog()
 
 
@@ -83,6 +79,10 @@ _console_io = ConsoleIO()
 get_yes_no = _console_io.get_yes_no
 choosing_options = _console_io.choosing_options
 get_whole_number_in_range = _console_io.get_whole_number_in_range
+_dietary_input = DietaryInput(
+    console=_console_io,
+    ingredient_catalog=_ingredient_catalog,
+)
 
 
 def first_error(rules):
@@ -104,181 +104,16 @@ def format_quantity(quantity):
 # dietary details
 # ---------------
 
-def display_dietary_choices():
-    #display the dietary menu options to the user
-    print("\nChoose your dietary preference:")
-
-    for choice, details in DIETARY_CHOICES.items():
-        print(f"{choice}. {details['display_name']}")
-
-    print("\nSelect option 5 alone or together with options 1 to 4.")
-    print("Do not select option 6 with any other option.")
-    print("Examples: 1 | 2, 5 | 5 | 6")
-
-
-def validate_dietary_choices(choices_input):
-    #remove spaces so inputs like "2, 5" and "2,5" are handled the same.
-    choices = choices_input.replace(" ", "").split(",")
-
-    #each tuple contains an invalid condition and its matching error message.
-    #the first failed rule stops validation immediately.
-    error = first_error([
-        (
-            choices == [""],
-            "Invalid input. Please enter a dietary option.",
-        ),
-        (
-            "" in choices,
-            "Invalid input. Kindly use commas between choices for example: 2, 5.",
-        ),
-        (
-            not all(c in DIETARY_CHOICES for c in choices),
-            "Invalid choice. Kindly enter options from 1 to 6 only.",
-        ),
-        (
-            len(choices) != len(set(choices)),
-            "Invalid input. Do not repeat the same option more than once.",
-        ),
-        (
-            NO_RESTRICTIONS_CHOICE in choices and len(choices) > 1,
-            "Do not select option 6 with any other option.",
-        ),
-        (
-            len(choices) > 2,
-            "Invalid input. Select one dietary category and, if needed, "
-            "option 5 for other exclusions/allergies.",
-        ),
-        (
-            len(choices) == 2 and CUSTOM_EXCLUSIONS_CHOICE not in choices,
-            "Choose only one dietary option unless you are also selecting "
-            "option 5.",
-        ),
-    ])
-
-    #print the first relevant error instead of showing all of the error messages.
-    if error:
-        print(error)
-        return None
-
-    return choices
-
-
-def primary_restrictions(primary_choice):
-    #returns the normalised restricted ingredients of the primary dietary category (empty if there is none).
-    if primary_choice is None:
-        return set()
-
-    return {
-        normalise_text(i)
-        for i in DIETARY_CHOICES[primary_choice]["restricted_ingredients"]
-    }
-
-
-def get_food_exclusions(primary_choice):
-    #option 5 on its own (primary_choice is None) has no automatic restrictions and user can enter up to 5 food exclusions/allergies.
-    existing = primary_restrictions(primary_choice)
-
-    while True:
-        text = normalise_text(
-            input(
-                "\nEnter food exclusions/allergies separated by commas "
-                "or type 'none'. "
-            )
-        )
-
-        if text == "none":
-            return []
-
-        # dict.fromkeys() de-duplicates while preserving the user's order.
-        items = list(dict.fromkeys(normalise_text(i) for i in text.split(",")))
-        restricted = [i for i in items if i in existing]
-
-        #only show the error message whose validation condition failed otherwise return none
-        error = first_error([
-            (
-                not text,
-                "Invalid input. Enter up to five food exclusions/allergies, "
-                "or type 'none'.",
-            ),
-            (
-                "" in items,
-                "Invalid input. Separate each food with one comma and "
-                "kindly do not leave any item blank.",
-            ),
-            (
-                bool(restricted),
-                "These food items are already excluded by your selected "
-                f"dietary choices: {', '.join(restricted)}.\n"
-                "Kindly enter other food exclusions/allergies.",
-            ),
-            (
-                len(items) > 5,
-                "You are allowed to only enter a maximum of five "
-                "food exclusions/allergies.",
-            ),
-        ])
-
-        if error is None:
-            return items
-
-        print(error)
-
-
-def category_name(choice):
-    #returns the display name of the dietary category based on the choice number
-    return DIETARY_CHOICES[choice or CUSTOM_EXCLUSIONS_CHOICE]["display_name"]
-
-
-def confirm_dietary_details(primary_choice, custom_exclusions):
-    #confirm the dietary details entered by the user.
-    print("\nPlease confirm your dietary details:")
-    print(f"Dietary category: {category_name(primary_choice)}")
-
-    if custom_exclusions:
-        print(f"Other exclusions/allergies: {', '.join(custom_exclusions)}")
-
-    return get_yes_no("Is this correct? (Y/N): ")
-
-
-def get_dietary_details():
-    #collect and confirm dietary details from the user, returning a dictionary with the collected input from the user
-    while True:
-        display_dietary_choices()
-
-        selected_choices = validate_dietary_choices(
-            input("\nEnter your choice(s): ").strip()
-        )
-
-        if selected_choices is None:
-            continue
-
-        primary_choice = next(
-            (
-                c
-                for c in selected_choices
-                if c in PRIMARY_DIETARY_CHOICES or c == NO_RESTRICTIONS_CHOICE
-            ),
-            None,
-        )
-        custom_exclusions = (
-            get_food_exclusions(primary_choice)
-            if CUSTOM_EXCLUSIONS_CHOICE in selected_choices
-            else []
-        )
-
-        if confirm_dietary_details(primary_choice, custom_exclusions):
-            return {
-                "dietary_choice": primary_choice,
-                "selected_choices": selected_choices,
-                "custom_exclusions": custom_exclusions,
-            }
-
-        print("\nPlease enter your dietary details again.")
-
-
-def get_all_restricted_ingredients(dietary_details):
-    custom = {normalise_text(i) for i in dietary_details["custom_exclusions"]}
-    return custom | primary_restrictions(dietary_details["dietary_choice"])
+display_dietary_choices = _dietary_input.display_dietary_choices
+validate_dietary_choices = _dietary_input.validate_dietary_choices
+primary_restrictions = _dietary_input.primary_restrictions
+get_food_exclusions = _dietary_input.get_food_exclusions
+category_name = _dietary_input.category_name
+confirm_dietary_details = _dietary_input.confirm_dietary_details
+get_dietary_details = _dietary_input.get_dietary_details
+get_all_restricted_ingredients = (
+    _dietary_input.get_all_restricted_ingredients
+)
 
 
 # -----------
