@@ -1,254 +1,352 @@
-from dictionary import INGREDIENT_ALIASES
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+import re
+from dictionary import INGREDIENT_ALLERGENS, ALLERGEN_RESTRICTIONS
 
-def validate_cooking_time(user_preference, ai_response):
-    max_time = user_preference["maximum_cooking_time"]
-    ai_time = ai_response["cooking_time_minutes"]
-
-    if ai_time > max_time:
+class Status(Enum):
+    ACCEPT = "ACCEPT"
+    REJECT = "REJECT"
+ 
+ 
+@dataclass
+class RuleResult:
+    """Outcome of one rule. passed=False is a hard failure (reject)."""
+    passed: bool
+    warning: str | None = None
+    score: int = 0
+ 
+ 
+@dataclass
+class EvaluationResult:
+    """Final outcome returned to the rest of the application."""
+    status: Status
+    reason: str
+    score: int
+    warning: str | None = None
+ 
+    def to_dict(self) -> dict:
         return {
-            "passed": False,
-            "warning": (
-                f"The recipe takes {ai_time} minutes, which exceeds your {max_time}-minute limit."
-            )
+            "status": self.status.value,
+            "reason": self.reason,
+            "score": self.score,
+            "warning": self.warning,
         }
-        
-    return {
-        "passed": True,
-        "warning": None
-    }
+ 
+ 
+class RecipeRule(ABC):
+    """Interface for all recipe rules.
+ 
+    Contract: evaluate() returns a RuleResult.
+    """
+ 
+    @property
+    def name(self) -> str:
+        return type(self).__name__
+ 
+    @abstractmethod
+    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        pass
+
+#--------------------
+# Rules
+#--------------------
+
+# maximum cooking time validation
+class CookingTimeRule(RecipeRule):
+ 
+    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        max_time = user_preferences["maximum_cooking_time"]
+        ai_time = ai_response["cooking_time_minutes"]
+ 
+        if ai_time > max_time:
+            return RuleResult(
+                passed=False,
+                warning=(f"Recipe takes {ai_time} minutes, "
+                         f"exceeding your {max_time}-minute limit."),
+            )
+        return RuleResult(passed=True)
 
 # dietary restrictions validation
-def _is_nonempty_str(value):
-    return isinstance(value, str) and bool(value.strip())
+@dataclass(frozen=True)
+class DietaryCheck:
+    """Maps a user restriction to the AI field that verifies it."""
+    ai_field: str
+    required_value: bool
+    warning: str
+ 
+ 
+DEFAULT_DIETARY_CHECKS = {
+    "halal": DietaryCheck("halal_suitable", True, "The recipe may not be halal."),
+    "no peanuts": DietaryCheck("contains_peanuts", False, "The recipe contains peanuts."),
+}
 
+class DietaryRestrictionRule(RecipeRule):
 
-def validate_dietary_restriction(user_preference, ai_response):
-    """Check recipe ingredients and seasonings against all exclusions."""
+    def __init__(self):
+    self.__checks = DEFAULT_DIETARY_CHECKS
 
-    def normalise(name):
-        cleaned = " ".join(name.lower().split())
-        return INGREDIENT_ALIASES.get(cleaned, cleaned)
+    def _to_bool(self, value):
+        if isinstance(value, bool):
+            return value
 
-    restricted = user_preference.get("restricted_ingredients")
-    ingredients = ai_response.get("ingredients")
-    seasonings = ai_response.get("seasonings")
+        if isinstance(value, str):
+            return value.strip().lower() in ["true", "yes"]
 
-    # Do not silently approve a recipe when dietary data is malformed.
-    if not (
-        isinstance(restricted, list)
-        and isinstance(ingredients, list)
-        and isinstance(seasonings, list)
-        and all(map(_is_nonempty_str, restricted))
-        and all(map(_is_nonempty_str, seasonings))
-        and all(
-            isinstance(i, dict) and _is_nonempty_str(i.get("name"))
-            for i in ingredients
-        )
-    ):
-        return {
-            "passed": False,
-            "warning": "Dietary validation failed: missing or malformed "
-                       "ingredient data.",
-        }
+        return bool(value)
 
-    recipe_names = {normalise(i["name"]) for i in ingredients}
-    recipe_names |= {normalise(s) for s in seasonings}
-    conflicts = sorted(recipe_names & {normalise(r) for r in restricted})
+    def _find_allergen_matches(self, ingredient, allergen):
+        matches = []
 
-    if conflicts:
-        return {
-            "passed": False,
-            "warning": "Recipe includes restricted ingredients: "
-                       + ", ".join(conflicts) + ".",
-        }
+        for key, allergens in INGREDIENT_ALLERGENS.items():
+            
+            # Check whether this ingredient is associated
+            # with the allergen being searched for.
+            if allergen in allergens:
 
-    return {"passed": True, "warning": None}
+                # Match the ingredient name or phrase.
+                if re.search(
+                    rf"\b{re.escape(key)}\b",
+                    ingredient
+                ):
+                    matches.append(key)
+    
+    return matches
 
-# breakfast preference scoring (soft preference, not a hard validation)
-def score_breakfast_preference(user_input, ai_response):
-    wants_breakfast = user_input["breakfast_preferred"]
-    is_breakfast_recipe = ai_response["is_breakfast"]
+    def evaluate(self, user_preferences, ai_response):
 
-    if not wants_breakfast:
-        return 0  # no preference stated, no bonus either way
+        dietary_info = ai_response["dietary_information"]
 
-    if is_breakfast_recipe:
-        return 1  # matches preference, add to ranking score
-    else:
-        return 0  # doesn't match, but not rejected
+        failures = []
+        unverified = []
 
-# checks recipe uses at least 3 of the user's ingredient input
-def check_main_ingredient(user_preference, ai_response):
-    user_ingredient = user_preference["available_ingredients"]
-    ai_ingredient = ai_response["main_ingredients_used"]
+        # Extract the recipe ingredient names.
+        recipe_ingredients = [
+            item["name"].strip().lower()
+            for item in ai_response["ingredients"]
+        ]
 
-    match_count = 0
-
-    for ingredient in user_ingredient:
-          ingredient_name = ingredient["name"]
-          if ingredient_name.lower() in [
-              item.lower() for item in ai_ingredient
-    ]:
-            match_count += 1
-
-    if match_count >= 3:
-        return True
-
-    return False
-
-# checks recipe for max 5 servings
-def check_max_servings(user_preference, ai_response):
-    user_servings = user_preference["servings"]
-    ai_servings = ai_response["servings"]
-
-    if ai_servings > 5:
-        return {
-            "passed": False,
-            "warning": f"This recipe serves more than 5 servings."
-        }
-
-    if ai_servings < user_servings:
-        return {
-            "passed": True,
-            "warning": f"This recipe can only serve {ai_servings} servings. Proceed only if you are okay with this."
-        }
-
-    return {
-        "passed": True,
-        "warning": None
-    }
-
-def check_measurements(user_preference, ai_response):
-    warnings = []
-
-    user_ingredients = user_preference["available_ingredients"]
-
-    unit_conversions = {
-        "g": ("mass", 1.0),
-        "kg": ("mass", 1000.0),
-        "ml": ("volume", 1.0),
-        "l": ("volume", 1000.0),
-    }
-
-    for recipe_item in ai_response["ingredients"]:
-        recipe_name = recipe_item["name"].lower()
-        recipe_amount = recipe_item["amount"]
-        recipe_unit = recipe_item["unit"].strip().lower()
-
-        for user_item in user_ingredients:
-            user_name = user_item["name"].lower()
-
-            if recipe_name == user_name:
-                user_amount = user_item["amount"]
-                user_unit = user_item["unit"].strip().lower()
-
-                #only compare amounts when the units are the same
-                if recipe_unit == user_unit:
-                    comparable_recipe_amount = recipe_amount
-                    comparable_user_amount = user_amount
-                else:
-                    recipe_conversion = unit_conversions.get(recipe_unit)
-                    user_conversion = unit_conversions.get(user_unit)
-
-                    if (
-                        recipe_conversion is None
-                        or user_conversion is None
-                        or recipe_conversion[0] != user_conversion[0]
-                    ):
-                        warnings.append(
-                            f"Cannot check the available quantity of "
-                            f"{recipe_name}: the recipe uses "
-                            f"{recipe_unit}, but you entered "
-                            f"{user_unit}."
-                        )
-                        break
-
-                    comparable_recipe_amount = (
-                        recipe_amount * recipe_conversion[1]
-                    )
-                    comparable_user_amount = (
-                        user_amount * user_conversion[1]
-                    )
-
-                tolerance = 1e-9 * max(
-                    abs(comparable_recipe_amount),
-                    abs(comparable_user_amount),
+        # Check each dietary restriction selected by the user.
+        for restriction in user_preferences["dietary_restrictions"]:
+            key = restriction.strip().lower()
+            
+            # Check restrictions that use AI dietary information.
+            check = self.__checks.get(key)
+    
+            if check is not None:
+                actual = self._to_bool(
+                    dietary_info[check.ai_field]
                 )
 
-                if (
-                    comparable_recipe_amount - comparable_user_amount
-                    > tolerance
-                ):
-                    warnings.append(
-                        f"The recipe requires {recipe_amount} "
-                        f"{recipe_unit} of {recipe_name}, but you "
-                        f"only have {user_amount} {user_unit}."
-                    )
+                if actual != check.required_value:
+                    failures.append(check.warning)
 
-                break
+            # Check restrictions using the allergen dictionary.
+            allergens = ALLERGEN_RESTRICTIONS.get(key)
+            
+            if allergens is not None:
+                for ingredient in recipe_ingredients:
+                    for allergen in allergens:
+                        matched = self._find_allergen_matches(
+                            ingredient, allergen
+                        )
 
-    return {
-        "passed": True,
-        "warning": "; ".join(warnings) if warnings else None
-    }
+                        if matched:
+                            failures.append(
+                                f"The recipe contains {ingredient}, "
+                                f"which may contain {allergen}."
+                            )
 
-def evaluate_recipe(user_preferences, ai_response):
+            # If neither method supports the restriction,
+            # mark it as unverified.
+            if check is None and allergens is None:
+                unverified.append(restriction)
 
-    cooking_time_ok = validate_cooking_time(
-        user_preferences,
-        ai_response
-    )
+        # Remove duplicate warning messages.
+        warnings = list(dict.fromkeys(failures))
 
-    dietary_ok = validate_dietary_restriction(
-        user_preferences,
-        ai_response
-    )
+        if unverified:
+            warnings.append(
+                "Could not verify these restrictions: "
+                + ", ".join(unverified) + "."
+            )
 
-    ingredients_ok = check_main_ingredient(
-        user_preferences,
-        ai_response
-    )
-
-    servings_ok = check_max_servings(
-        user_preferences,
-        ai_response
-    )
-
-    measurements_ok = check_measurements(
-        user_preferences,
-        ai_response
-    )
-    #combine every nonempty warning so one warning does not hide another.
-    #uses none when none of the checks produces a warning.
-    combined_warning = "; ".join(
-        result["warning"]
-        for result in (
-            servings_ok,
-            measurements_ok,
-            cooking_time_ok,
-            dietary_ok,
+        return RuleResult(
+            passed=not failures,
+            warning=" ".join(warnings) if warnings else None
         )
-        if result["warning"]
-    ) or None
+# breakfast preference scoring (soft preference, not a hard validation)
+class BreakfastPreferenceRule(RecipeRule):
+ 
+    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        matches = bool(user_preferences["breakfast_preferred"]) and bool(ai_response["is_breakfast"])
+        return RuleResult(passed=True, score=1 if matches else 0)
 
-    #accept only when all required checks pass.
-    #check each dictionary's "passed" value, not the dictionary itself.
-    if (
-        ingredients_ok
-        and servings_ok["passed"]
-        and measurements_ok["passed"]
-        and cooking_time_ok["passed"]
-        and dietary_ok["passed"]
-    ):
-        return {
-            "status": "ACCEPT",
-            "reason": "Recipe meets all requirements.",
-            "warning": combined_warning
+# checks recipe uses at least 3 of the user's ingredient input
+class MainIngredientRule(RecipeRule):
+ 
+    def __init__(self, min_matches: int = 3):
+        self.__min_matches = min_matches
+ 
+    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        user_ingredient = {
+            item["name"].strip().lower()
+            for item in user_preferences["available_ingredients"]
         }
-    
-    #reject when a required check fails, retaining warnings that were stored in the combined_warning variable.
-    return {
-        "status": "REJECT",
-        "reason": "Recipe does not meet all requirements.",
-        "warning": combined_warning
+        ai_ingredient = {
+            name.strip().lower()
+            for name in ai_response["main_ingredients_used"]
+        }
+ 
+        match_count = len(user_ingredient & ai_ingredient)
+ 
+        if match_count < self.__min_matches:
+            return RuleResult(
+                passed=False,
+                warning=(f"Recipe uses only {match_count} of required ingredients. "
+                         f"At least {self.__min_matches} are required."),
+            )
+        return RuleResult(passed=True)
+
+# checks recipe for max 5 servings
+class ServingsRule(RecipeRule):
+ 
+    def __init__(self, max_servings: int = 5):
+        self.__max_servings = max_servings
+ 
+    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        requested = user_preferences["servings"]
+        actual = ai_response["servings"]
+ 
+        if actual > self.__max_servings:
+            return RuleResult(
+                passed=False,
+                warning=f"This recipe serves more than {self.__max_servings} people.",
+            )
+ 
+        if actual < requested:
+            return RuleResult(
+                passed=True,
+                warning=(f"This recipe serves {actual} people, "
+                         f"less than your requested {requested}. "
+                         "Proceed only if you are okay with this."),
+            )
+        return RuleResult(passed=True)
+
+class MeasurementRule(RecipeRule):
+ 
+    # unit -> (dimension, factor to base unit); base units are g and ml
+    CONVERSIONS = {
+        "g": ("mass", 1),
+        "kg": ("mass", 1000),
+        "ml": ("volume", 1),
+        "l": ("volume", 1000),
+        "pieces": ("count", 1),
+        "piece": ("count", 1),
     }
+ 
+    def evaluate(self, user_preferences: dict, ai_response: dict) -> RuleResult:
+        # Lookup by ingredient name instead of a nested loop
+        available = {
+            item["name"].strip().lower(): item
+            for item in user_preferences["available_ingredients"]
+        }
+        warnings = []
+ 
+        for recipe_item in ai_response["ingredients"]:
+            name = recipe_item["name"].strip().lower()
+            user_item = available.get(name)
+            if user_item is None:
+                continue
+ 
+            recipe_unit = recipe_item["unit"].strip().lower()
+            user_unit = user_item["unit"].strip().lower()
+ 
+            if recipe_unit not in self.CONVERSIONS or user_unit not in self.CONVERSIONS:
+                continue
+ 
+            recipe_dim, recipe_factor = self.CONVERSIONS[recipe_unit]
+            user_dim, user_factor = self.CONVERSIONS[user_unit]
+ 
+            if recipe_dim != user_dim:
+                warnings.append(
+                    f"Cannot compare {name}: recipe uses {recipe_unit} "
+                    f"but you have {user_unit}."
+                )
+                continue
+ 
+            if recipe_item["amount"] * recipe_factor > user_item["amount"] * user_factor:
+                warnings.append(
+                    f"Recipe requires {recipe_item['amount']} {recipe_unit} of {name}, "
+                    f"but you have only {user_item['amount']} {user_unit}."
+                )
+ 
+        # Measurement problems are advisory, never a hard failure
+        return RuleResult(passed=True, warning=" ".join(warnings) if warnings else None)
+
+class LogicManager:
+ 
+    def __init__(self, rules: list[RecipeRule] | None = None):
+        # Composition: the manager owns its rules. Defaults are built here,
+        # but callers may supply their own (open for extension).
+        self.__rules = list(rules) if rules is not None else self._default_rules()
+ 
+    @staticmethod
+    def _default_rules() -> list[RecipeRule]:
+        return [
+            CookingTimeRule(),
+            DietaryRestrictionRule(),
+            MainIngredientRule(),
+            ServingsRule(),
+            MeasurementRule(),
+            BreakfastPreferenceRule(),
+        ]
+ 
+    def _run_rule(self, rule: RecipeRule, user_preferences: dict, ai_response: dict) -> RuleResult:
+        # Enforces the RecipeRule contract: always returns a RuleResult,
+        # so malformed AI output cannot crash the application.
+        try:
+            return rule.evaluate(user_preferences, ai_response)
+        except (KeyError, TypeError, ValueError, AttributeError) as error:
+            return RuleResult(
+                passed=False,
+                warning=f"{rule.name} could not be evaluated ({type(error).__name__}: {error}).",
+            )
+ 
+    def evaluate_recipe(self, user_preferences: dict, ai_response: dict) -> EvaluationResult:
+        # Polymorphism: every rule is used through the RecipeRule interface
+        results = [
+            self._run_rule(rule, user_preferences, ai_response)
+            for rule in self.__rules
+        ]
+ 
+        warnings = [r.warning for r in results if r.warning]
+        combined_warning = " ".join(warnings) if warnings else None
+        total_score = sum(r.score for r in results)
+ 
+        if any(not r.passed for r in results):
+            return EvaluationResult(
+                Status.REJECT,
+                "Recipe does not meet all requirements.",
+                total_score,
+                combined_warning,
+            )
+ 
+        return EvaluationResult(
+            Status.ACCEPT,
+            "Recipe meets all requirements.",
+            total_score,
+            combined_warning,
+        )
+
+if __name__ == "__main__":
+    import json
+
+    with open("test_script_user_input.json", "r") as file:
+        user_preferences = json.load(file)
+
+    with open("test_script_AI.json", "r") as file:
+        ai_response = json.load(file)
+
+    result = LogicManager().evaluate_recipe(user_preferences, ai_response)
+    print(result.to_dict())
