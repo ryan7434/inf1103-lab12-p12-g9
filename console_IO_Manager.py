@@ -45,13 +45,11 @@ class ConsoleIO:
         while True:
             user_input = self._input(prompt).strip()
 
-            if not user_input:
-                #reject blank input and restart the loop
+            if not user_input: #reject blank input and restart the loop
                 self._output("Input cannot be blank.")
                 continue
 
-            #digits only (rejects "1_0", "3.5", "-2" and text)
-            if not user_input.isdecimal():
+            if not user_input.isdecimal(): #digits only (rejects "1_0", "3.5", "-2" and text)
                 self._output(
                     "Invalid input. Please enter a whole number using digits only."
                 )
