@@ -14,35 +14,6 @@ import urllib.error
 import urllib.parse
 from datetime import datetime
 
-# Gemini free tier
-MODEL_NAME = "gemini-3.7-flash"
-API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-API_KEY = os.environ.get("GEMINI_API_KEY", "")
-
-# Keep retries low - each retry costs a request.
-MAX_RETRIES = 2
-RETRY_DELAY_SECONDS = 3          # backoff for generic failures (parse/API errors)
-RATE_LIMIT_DELAY_SECONDS = 20    # longer backoff specifically for HTTP 429
-
-MAX_OUTPUT_TOKENS = 3500        # kept low - schema enforcement means we don't
-                                  # need extra tokens for the model to
-                                  # "explain" the JSON shape.
-
-THINKING_BUDGET = 0
-
-LOG_FILE = "ai_manager_errors.log"
-
-# Required fields
-REQUIRED_RECIPE_FIELDS = {
-    "recipe_name": str,
-    "ingredients": list,
-    "description": str,
-    "seasonings": list,
-    "instructions": list,
-    "estimated_cooking_time_minutes": (int, float),
-    "servings": (int, float),
-    "is_breakfast": bool,
-}
 
 # Makes it so the output is in this format
 RECIPE_RESPONSE_SCHEMA = {
