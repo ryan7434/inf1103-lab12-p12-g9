@@ -1,10 +1,9 @@
 from datetime import datetime
 import IO_manager
 from ai_manager import AiManager
-import logic_manager
-import data_manager
+from logic_manager import LogicManager
 from data_manager import JsonDataManager
-
+from status_logic_manager import Status
 from dictionary import (
     DIETARY_CHOICES,
     HALAL_RESTRICTED_INGREDIENTS,
@@ -82,6 +81,9 @@ def build_logic_manager_user_preference(req):
     """
     return {
         "maximum_cooking_time": req["max_time"],
+
+        #keys that DietaryRestrictionRule understands ("halal", "no peanuts"...).
+        "dietary_restrictions": resolve_dietary_keys(req),
 
         #full category restrictions plus custom exclusions.
         "restricted_ingredients": sorted(
@@ -224,9 +226,9 @@ def main():
     # requirements (cooking time, dietary/halal safety, ingredient
     # overlap, servings, measurements) via logic_manager.
     user_preference = build_logic_manager_user_preference(request)
+    logic = LogicManager()
  
     accepted = []
-    breakfast_scores = {}
 
     for recipe in recipes:
         if not ai_manager.is_valid_recipe(recipe):
@@ -258,19 +260,14 @@ def main():
             continue
 
         # Check the recipe against the user's preferences and ingredients.
-        evaluation = logic_manager.evaluate_recipe(
+        evaluation = logic.evaluate_recipe(
             user_preference,
             ai_response,
         )
 
-        if evaluation["status"] == "ACCEPT":
-            breakfast_scores[id(recipe)] = (
-                logic_manager.score_breakfast_preference(
-                    user_preference,
-                    ai_response,
-                )
-            )
+        if evaluation.status == Status.ACCEPT:
             accepted.append((recipe, evaluation))
+
 
     if not accepted:
         print("\nNo recipes passed validation.")
@@ -278,7 +275,7 @@ def main():
 
     # Rank breakfast matches first without rejecting other valid recipes.
     accepted.sort(
-        key=lambda item: breakfast_scores[id(item[0])],
+        key=lambda item: item[1].score,
         reverse=True,
     )
     
@@ -330,7 +327,7 @@ def main():
             for step_number, step in enumerate(instructions, start=1):
                 print(f"  {step_number}. {step}")
 
-        if evaluation["warning"]:
+        if evaluation.warning:
             print(f"\nNote: {evaluation['warning']}")
         if not saved:
             print(f"\n(Warning: could not save this recipe to recipes_history.json)")
