@@ -130,7 +130,7 @@ class AIProvider(ABC):
 class GeminiProvider(AIProvider):
     """AIProvider backed by the Gemini REST API (standard library only)."""
 
-    DEFAULT_MODEL = "gemini-3.7-flash"
+    DEFAULT_MODEL = "gemini-3.6-flash"
     API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
     def __init__(
