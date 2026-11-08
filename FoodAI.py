@@ -1,16 +1,15 @@
 from datetime import datetime
 from fractions import Fraction
 
-import IO_manager
-from IO_manager import IOManager
 from ai_manager import AiManager
-from logic_manager import LogicManager, Status
-from data_manager import JsonDataManager, BaseDataManager
+from data_manager import BaseDataManager, JsonDataManager
 from dictionary import (
     DIETARY_CHOICES,
     HALAL_RESTRICTED_INGREDIENTS,
     IngredientCatalog,
 )
+from IO_manager import IOManager
+from logic_manager import LogicManager, Status
 
 
 class RecipeTranslator:
@@ -321,95 +320,6 @@ class RecipeApp:
             next_id += 1
 
 
-def main():
-    # Step 1: collect and confirm the user's request.
-    request = IO_manager.main()
-    restricted = sorted(IO_manager.get_all_restricted_ingredients(request["dietary"]))
-    translator = RecipeTranslator()
-    presenter = RecipePresenter()
- 
-    # Step 2: translate it into ai_manager's expected shape, then
-    # generate candidate recipes via the AI layer.
-    ai_input = translator.to_ai_input(request, restricted)
-    ai_manager = AiManager.from_environment()
-    recipes = ai_manager.generate_recipes(ai_input)
- 
-    if not recipes:
-        presenter.show_message(
-            "\nSorry, we couldn't generate any recipes right now. "
-            "Please check ai_manager_errors.log or try again shortly."
-        )
-        return
- 
-    # Step 3: validate each candidate recipe against the user's hard
-    # requirements (cooking time, dietary/halal safety, ingredient
-    # overlap, servings, measurements) via logic_manager.
-    user_preference = translator.to_logic_preferences(request, restricted)
-    logic = LogicManager()
- 
-    accepted = []
-
-    for recipe in recipes:
-        if not ai_manager.is_valid_recipe(recipe):
-            recipe_name = (
-                recipe.get("recipe_name", "Unnamed recipe")
-                if isinstance(recipe, dict)
-                else "Unnamed recipe"
-            )
-            presenter.show_message(
-                f"\nSkipping '{recipe_name}' because its recipe "
-                "data is malformed."
-            )
-            continue
-
-        recipe_name = recipe.get("recipe_name", "Unnamed recipe")
-
-        # Convert the AI recipe into the logic manager's expected format.
-        # Skip the recipe if its ingredient quantities cannot be parsed.
-        try:
-            ai_response = translator.to_logic_response(recipe)
-        except ValueError as error:
-            presenter.show_message(
-                f"\nSkipping '{recipe_name}' because its ingredient "
-                f"quantities are invalid: {error}"
-            )
-            continue
-
-        # Check the recipe against the user's preferences and ingredients.
-        evaluation = logic.evaluate_recipe(
-            user_preference,
-            ai_response,
-        )
-
-        if evaluation.status == Status.ACCEPT:
-            accepted.append((recipe, evaluation))
-
-
-    if not accepted:
-        presenter.show_message("\nNo recipes passed validation.")
-        return
-
-    # Rank breakfast matches first without rejecting other valid recipes.
-    accepted.sort(
-        key=lambda item: item[1].score,
-        reverse=True,
-    )
-    
-    # Step 4: persist each accepted recipe via JsonDataManager object.
-    data_mgr = JsonDataManager()
-    existing_records = data_mgr.load_records()
-    next_id = len(existing_records) + 1
-
-    presenter.show_summary(len(accepted), len(recipes))
-    for recipe, evaluation in accepted:
-        record = translator.to_record(next_id, recipe, request, ai_input)
-        record["ai_response"] = recipe
-        saved = data_mgr.save_record(record)
-
-        presenter.show_recipe(recipe, evaluation, saved)
-        next_id += 1
-
-
 if __name__ == "__main__":
-    main()
+    RecipeApp.create_default().run()
 
