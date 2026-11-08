@@ -270,5 +270,16 @@ class TestRecipePresenter(unittest.TestCase):
         self.assertEqual(lines[0], "hello")
         self.assertIn("2 of 5 generated recipe(s) passed validation", lines[1])
 
+class TestNoProceduralCodeRemains(unittest.TestCase):
+    def test_the_module_defines_no_standalone_functions(self):
+        import inspect
+
+        functions = [
+            name for name, obj in vars(FoodAI).items()
+            if inspect.isfunction(obj) and obj.__module__ == FoodAI.__name__
+        ]
+        self.assertEqual(functions, [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
