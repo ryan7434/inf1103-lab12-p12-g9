@@ -97,5 +97,14 @@ class TestRecipeTranslator(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.translator.to_logic_response(make_recipe(quantity=bad))
 
+class TestRecipePresenter(unittest.TestCase):
+    def test_output_goes_through_the_function_it_was_given(self):
+        lines = []
+        presenter = FoodAI.RecipePresenter(output=lines.append)
+        presenter.show_message("hello")
+        presenter.show_summary(2, 5)
+        self.assertEqual(lines[0], "hello")
+        self.assertIn("2 of 5 generated recipe(s) passed validation", lines[1])
+        
 if __name__ == "__main__":
     unittest.main(verbosity=2)
