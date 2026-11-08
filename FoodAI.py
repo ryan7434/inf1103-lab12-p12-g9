@@ -218,17 +218,18 @@ class RecipePresenter:
 def main():
     # Step 1: collect and confirm the user's request.
     request = IO_manager.main()
+    restricted = sorted(IO_manager.get_all_restricted_ingredients(request["dietary"]))
+    translator = RecipeTranslator()
+    presenter = RecipePresenter()
  
     # Step 2: translate it into ai_manager's expected shape, then
     # generate candidate recipes via the AI layer.
-    restricted = sorted(IO_manager.get_all_restricted_ingredients(request["dietary"]))
-    translator = RecipeTranslator()
     ai_input = translator.to_ai_input(request, restricted)
     ai_manager = AiManager.from_environment()
     recipes = ai_manager.generate_recipes(ai_input)
  
     if not recipes:
-        print(
+        presenter.show_message(
             "\nSorry, we couldn't generate any recipes right now. "
             "Please check ai_manager_errors.log or try again shortly."
         )
@@ -249,7 +250,7 @@ def main():
                 if isinstance(recipe, dict)
                 else "Unnamed recipe"
             )
-            print(
+            presenter.show_message(
                 f"\nSkipping '{recipe_name}' because its recipe "
                 "data is malformed."
             )
@@ -262,7 +263,7 @@ def main():
         try:
             ai_response = translator.to_logic_response(recipe)
         except ValueError as error:
-            print(
+            presenter.show_message(
                 f"\nSkipping '{recipe_name}' because its ingredient "
                 f"quantities are invalid: {error}"
             )
@@ -279,7 +280,7 @@ def main():
 
 
     if not accepted:
-        print("\nNo recipes passed validation.")
+        presenter.show_message("\nNo recipes passed validation.")
         return
 
     # Rank breakfast matches first without rejecting other valid recipes.
@@ -293,55 +294,13 @@ def main():
     existing_records = data_mgr.load_records()
     next_id = len(existing_records) + 1
 
-    print(f"\n{len(accepted)} of {len(recipes)} generated recipe(s) passed validation:\n")
+    presenter.show_summary(len(accepted), len(recipes))
     for recipe, evaluation in accepted:
         record = translator.to_record(next_id, recipe, request, ai_input)
         record["ai_response"] = recipe
         saved = data_mgr.save_record(record)
 
-        print("=" * 60)
-        print(
-            f"{recipe.get('recipe_name')} "
-            f"({recipe.get('estimated_cooking_time_minutes')} min, "
-            f"serves {recipe.get('servings')})"
-        )
-        print("=" * 60)
-
-        if recipe.get("is_breakfast"):
-            print("Breakfast dish")
-
-
-        if recipe.get("description"):
-            print(f"\n{recipe['description']}")
-
-        ingredients = recipe.get("ingredients", [])
-        if ingredients:
-            print("\nIngredients:")
-            for ingredient in ingredients:
-                print(
-                    f"  - {ingredient.get('quantity', '')} "
-                    f"{ingredient.get('unit', '')} "
-                    f"{ingredient.get('name', '')}".rstrip()
-                )
-
-        seasonings = recipe.get("seasonings", [])
-        if seasonings:
-            print("\nSeasonings:")
-            for seasoning in seasonings:
-                print(f"  - {seasoning}")
-
-        instructions = recipe.get("instructions", [])
-        if instructions:
-            print("\nInstructions:")
-            for step_number, step in enumerate(instructions, start=1):
-                print(f"  {step_number}. {step}")
-
-        if evaluation.warning:
-            print(f"\nNote: {evaluation['warning']}")
-        if not saved:
-            print(f"\n(Warning: could not save this recipe to recipes_history.json)")
- 
-        print()
+        presenter.show_recipe(recipe, evaluation, saved)
         next_id += 1
 
 
