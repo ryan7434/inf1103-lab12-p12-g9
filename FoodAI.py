@@ -152,7 +152,68 @@ class RecipeTranslator:
         except (TypeError, ValueError, ZeroDivisionError, OverflowError):
             pass
         raise ValueError(f"Invalid quantity: {value!r}")
-    
+
+
+class RecipePresenter:
+    """Prints recipes to the console. Only knows how to display."""
+
+    def __init__(self, output=print):
+        self._output = output
+
+    def show_message(self, message):
+        self._output(message)
+
+    def show_summary(self, accepted_count, total_count):
+        self._output(
+            f"\n{accepted_count} of {total_count} generated recipe(s) passed validation:\n"
+        )
+
+    def show_recipe(self, recipe, evaluation, saved):
+        write = self._output
+
+        write("=" * 60)
+        write(
+            f"{recipe.get('recipe_name')} "
+            f"({recipe.get('estimated_cooking_time_minutes')} min, "
+            f"serves {recipe.get('servings')})"
+        )
+        write("=" * 60)
+
+        if recipe.get("is_breakfast"):
+            write("Breakfast dish")
+
+        if recipe.get("description"):
+            write(f"\n{recipe['description']}")
+
+        ingredients = recipe.get("ingredients", [])
+        if ingredients:
+            write("\nIngredients:")
+            for ingredient in ingredients:
+                write(
+                    f"  - {ingredient.get('quantity', '')} "
+                    f"{ingredient.get('unit', '')} "
+                    f"{ingredient.get('name', '')}".rstrip()
+                )
+
+        seasonings = recipe.get("seasonings", [])
+        if seasonings:
+            write("\nSeasonings:")
+            for seasoning in seasonings:
+                write(f"  - {seasoning}")
+
+        instructions = recipe.get("instructions", [])
+        if instructions:
+            write("\nInstructions:")
+            for step_number, step in enumerate(instructions, start=1):
+                write(f"  {step_number}. {step}")
+
+        if evaluation.warning:
+            write(f"\nNote: {evaluation.warning}")
+        if not saved:
+            write("\n(Warning: could not save this recipe to recipes_history.json)")
+
+        write("")
+
 
 def main():
     # Step 1: collect and confirm the user's request.
