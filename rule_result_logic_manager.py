@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
 
 @dataclass
 class RuleResult:
@@ -6,3 +7,6 @@ class RuleResult:
     passed: bool
     warning: str | None = None
     score: int = 0
+
+    #ingredients that need the user to check their contents
+    manual_validation: list[dict] = field(default_factory=list)

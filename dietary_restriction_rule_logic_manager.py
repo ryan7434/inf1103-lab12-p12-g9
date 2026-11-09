@@ -3,7 +3,11 @@ from rule_result_logic_manager import RuleResult
 from dietary_check_logic_manager import DietaryCheck
 
 import re
-from dictionary import INGREDIENT_ALLERGENS, ALLERGEN_RESTRICTIONS
+from dictionary import (
+    INGREDIENT_ALLERGENS,
+    ALLERGEN_RESTRICTIONS,
+    IngredientCatalog,
+)
 
 
 DEFAULT_DIETARY_CHECKS = {
@@ -14,8 +18,21 @@ DEFAULT_DIETARY_CHECKS = {
 
 class DietaryRestrictionRule(RecipeRule):
 
+    #additional spellings for allergen-category names.
+    ALLERGEN_ALIASES = {
+        "peanut": "peanuts",
+        "no peanut": "no peanuts",
+        "egg": "eggs",
+        "no egg": "no eggs",
+        "nut": "nuts",
+        "no nut": "no nuts",
+        "tree nut": "tree nuts",
+        "no tree nut": "no tree nuts",
+    }
+
     def __init__(self):
         self.__checks = DEFAULT_DIETARY_CHECKS
+        self._catalog = IngredientCatalog()
 
     def _to_bool(self, value):
         if isinstance(value, bool):
@@ -26,19 +43,36 @@ class DietaryRestrictionRule(RecipeRule):
 
         return bool(value)
 
+    def _normalise(self, value):
+        return self._catalog.normalise(value)
+
+    @staticmethod
+    def _contains_phrase(text, phrase):
+        #match complete words or phrases instead of partial words
+        return bool(
+            phrase
+            and re.search(
+                rf"(?<!\w){re.escape(phrase)}(?!\w)",
+                text,
+            )
+        )
+
+    def _allergen_key(self, restriction):
+        key = " ".join(restriction.lower().split())
+        return self.ALLERGEN_ALIASES.get(key, key)
+
     def _find_allergen_matches(self, ingredient, allergen):
         matches = []
 
         for key, allergens in INGREDIENT_ALLERGENS.items():
 
-            # Check whether this ingredient is associated
-            # with the allergen being searched for.
+            #check whether this ingredient is associated with the allergen being searched for
             if allergen in allergens:
 
-                # Match the ingredient name or phrase.
-                if re.search(
-                    rf"\b{re.escape(key)}\b",
-                    ingredient
+                #match the ingredient name or phrase
+                if self._contains_phrase(
+                    ingredient,
+                    self._normalise(key),
                 ):
                     matches.append(key)
 
@@ -51,17 +85,51 @@ class DietaryRestrictionRule(RecipeRule):
         failures = []
         unverified = []
 
-        # Extract the recipe ingredient names.
+        #extract the recipe ingredient names
         recipe_ingredients = [
-            item["name"].strip().lower()
+            self._normalise(item["name"])
             for item in ai_response["ingredients"]
         ]
 
-        # Check each dietary restriction selected by the user.
-        for restriction in user_preferences["dietary_restrictions"]:
-            key = restriction.strip().lower()
+        #check seasonings as well as the main ingredient list
+        recipe_ingredients.extend(
+            self._normalise(seasoning)
+            for seasoning in ai_response.get("seasonings", [])
+        )
+        recipe_ingredients = list(dict.fromkeys(recipe_ingredients))
 
-            # Check restrictions that use AI dietary information.
+        #preserve the full exclusion list, including custom foods
+        restricted_ingredients = list(
+            dict.fromkeys(
+                self._normalise(item)
+                for item in user_preferences.get(
+                    "restricted_ingredients", []
+                )
+            )
+        )
+
+        #reject direct matches even when the food is not in the allergen dictionary
+        for restriction in restricted_ingredients:
+            for ingredient in recipe_ingredients:
+                if self._contains_phrase(ingredient, restriction):
+                    failures.append(
+                        f"The recipe contains {ingredient}, "
+                        f"which matches your exclusion: {restriction}."
+                    )
+
+        #check each dietary restriction selected by the user
+        dietary_restrictions = list(
+            dict.fromkeys(
+                self._allergen_key(restriction)
+                for restriction in user_preferences.get(
+                    "dietary_restrictions", []
+                )
+            )
+        )
+
+        for key in dietary_restrictions:
+
+            #check restrictions that use AI dietary information
             check = self.__checks.get(key)
 
             if check is not None:
@@ -72,26 +140,34 @@ class DietaryRestrictionRule(RecipeRule):
                 if actual != check.required_value:
                     failures.append(check.warning)
 
-            # Check restrictions using the allergen dictionary.
             allergens = ALLERGEN_RESTRICTIONS.get(key)
 
-            if allergens is not None:
-                for ingredient in recipe_ingredients:
-                    for allergen in allergens:
-                        matched = self._find_allergen_matches(
-                            ingredient, allergen
-                        )
-
-                        if matched:
-                            failures.append(
-                                f"The recipe contains {ingredient}, "
-                                f"which may contain {allergen}."
-                            )
-
-            # If neither method supports the restriction,
-            # mark it as unverified.
+            #if neither method supports the restriction mark it as unverified
             if check is None and allergens is None:
-                unverified.append(restriction)
+                unverified.append(key)
+
+        #resolve supported allergen categories from both lists
+        #for example, "peanut" resolves to the "peanuts" category
+        allergen_categories = set()
+
+        for restriction in dietary_restrictions + restricted_ingredients:
+            key = self._allergen_key(restriction)
+            allergen_categories.update(
+                ALLERGEN_RESTRICTIONS.get(key, [])
+            )
+
+        #check restrictions using the allergen dictionary
+        for allergen in sorted(allergen_categories):
+            for ingredient in recipe_ingredients:
+                matched = self._find_allergen_matches(
+                    ingredient, allergen
+                )
+
+                if matched:
+                    failures.append(
+                        f"The recipe contains {ingredient}, "
+                        f"which may contain {allergen}."
+                    )
 
         # Remove duplicate warning messages.
         warnings = list(dict.fromkeys(failures))

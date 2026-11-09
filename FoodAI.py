@@ -64,6 +64,7 @@ class RecipeTranslator:
             "maximum_cooking_time": req["max_time"],
             "dietary_restrictions": self.dietary_keys(req),
             "restricted_ingredients": list(restricted_ingredients),
+                        "custom_exclusions": list(req["dietary"]["custom_exclusions"]),
             "breakfast_preferred": req["breakfast"],
             # the rules compare numbers, so Decimal becomes float here
             "available_ingredients": [
@@ -190,7 +191,7 @@ class RecipePresenter:
             write("\nIngredients:")
             for ingredient in ingredients:
                 write(
-                    f"  - {ingredient.get('quantity', '')} "
+                    f" - {ingredient.get('quantity', '')} "
                     f"{ingredient.get('unit', '')} "
                     f"{ingredient.get('name', '')}".rstrip()
                 )
@@ -199,21 +200,39 @@ class RecipePresenter:
         if seasonings:
             write("\nSeasonings:")
             for seasoning in seasonings:
-                write(f"  - {seasoning}")
+                write(f" - {seasoning}")
 
         instructions = recipe.get("instructions", [])
         if instructions:
             write("\nInstructions:")
             for step_number, step in enumerate(instructions, start=1):
-                write(f"  {step_number}. {step}")
+                write(f" {step_number}. {step}")
+
+        # Display this section only when manual checks are required.
+        if evaluation.manual_validation:
+            write("\nManual validation:")
+            write(
+                "PENDING — this recipe is not confirmed suitable for your "
+                "exclusions. Check the listed items before using them."
+            )
+
+            for item in evaluation.manual_validation:
+                exclusions = ", ".join(item["exclusions_to_check"])
+
+                write(
+                    f" - {item['ingredient']}: check for {exclusions}. "
+                    f"{item['reason']}"
+                )
 
         if evaluation.warning:
             write(f"\nNote: {evaluation.warning}")
+
         if not saved:
-            write("\n(Warning: could not save this recipe to recipes_history.json)")
+            write(
+                "\n(Warning: could not save this recipe to recipes_history.json)"
+            )
 
         write("")
-
 
 class RecipeApp:
     """Runs one recipe request from the user's input to the saved results.
@@ -311,9 +330,30 @@ class RecipeApp:
         next_id = len(self._data_manager.load_records()) + 1
 
         self._presenter.show_summary(len(accepted), total_count)
+
+        pending_count = sum(
+            bool(evaluation.manual_validation)
+            for _, evaluation in accepted
+        )
+
+        if pending_count:
+            self._presenter.show_message(
+                f"{pending_count} displayed recipe(s) require manual validation; "
+                "they are not confirmed suitable for your exclusions."
+            )
+
         for recipe, evaluation in accepted:
-            record = self._translator.to_record(next_id, recipe, request, ai_input)
+            record = self._translator.to_record(
+                next_id,
+                recipe,
+                request,
+                ai_input,
+            )
+
             record["ai_response"] = recipe
+            record["manual_validation"] = evaluation.manual_validation
+            record["validation_state"] = evaluation.validation_state
+
             saved = self._data_manager.save_record(record)
 
             self._presenter.show_recipe(recipe, evaluation, saved)

@@ -783,7 +783,6 @@ INGREDIENT_ALLERGENS = {
     "satay sauce": ["peanuts", "nuts"],
     "peanut sauce": ["peanuts"],
     "groundnut sauce": ["peanuts"],
-    "peanut butter": ["peanuts"],
     "crushed peanuts": ["peanuts", "nuts"],
     "chopped peanuts": ["peanuts", "nuts"],
     "peanut oil": ["peanuts"],
