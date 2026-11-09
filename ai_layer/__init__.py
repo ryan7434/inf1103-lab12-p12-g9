@@ -1,4 +1,6 @@
-"""AI layer: prompt building, provider calls, parsing and validation."""
+"""AI layer: prompt building, provider calls, parsing and validation.
+    makes folder a real package meaning a folder of modules you can import from
+"""
 
 from .ai_manager import AiManager
 from .ai_provider import AIProvider
