@@ -9,16 +9,8 @@ class ManualValidationRule(RecipeRule):
     #flag vague compound names, not every named sauce or seasoning
 
     VAGUE_DESCRIPTORS = (
-        "special",
-        "secret",
-        "mystery",
-        "unknown",
-        "unspecified",
-        "house",
-        "homemade",
-        "home made",
         "signature",
-        "proprietary",
+        "special",
     )
 
     COMPOUND_TERMS = (

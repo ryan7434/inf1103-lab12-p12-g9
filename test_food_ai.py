@@ -13,6 +13,7 @@ import tempfile
 import unittest
 from decimal import Decimal
 from unittest import mock
+from pathlib import Path
 
 import FoodAI
 from ai_manager import AIProvider, AiManager, AITransportError, ErrorLogger, RecipeValidator
@@ -280,6 +281,457 @@ class TestNoProceduralCodeRemains(unittest.TestCase):
         ]
         self.assertEqual(functions, [])
 
+class TestJsonDataManager(unittest.TestCase):
+    """Tests real JSON persistence using isolated temporary files."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "history.json"
+
+    def write_history(self, content):
+        self.path.write_text(content, encoding="utf-8")
+
+    def read_history(self):
+        return self.path.read_text(encoding="utf-8")
+
+    def test_missing_history_is_initialised_as_empty_list(self):
+        self.assertFalse(self.path.exists())
+
+        manager = JsonDataManager(str(self.path))
+
+        self.assertTrue(self.path.exists())
+        self.assertEqual(manager.load_records(), [])
+        self.assertEqual(json.loads(self.read_history()), [])
+
+    def test_deleted_history_is_recreated_when_loaded(self):
+        manager = JsonDataManager(str(self.path))
+        self.path.unlink()
+
+        self.assertEqual(manager.load_records(), [])
+        self.assertTrue(self.path.exists())
+        self.assertEqual(json.loads(self.read_history()), [])
+
+    def test_empty_history_file_is_handled(self):
+        self.write_history("")
+
+        manager = JsonDataManager(str(self.path))
+
+        self.assertEqual(manager.load_records(), [])
+        self.assertTrue(manager.save_record({"record_id": 1}))
+        self.assertEqual(
+            manager.load_records(),
+            [{"record_id": 1}],
+        )
+
+    def test_corrupt_json_loads_without_crashing(self):
+        original = '{"record_id": broken'
+        self.write_history(original)
+
+        manager = JsonDataManager(str(self.path))
+
+        self.assertEqual(manager.load_records(), [])
+        self.assertEqual(self.read_history(), original)
+
+    def test_save_does_not_overwrite_corrupt_history(self):
+        original = '{"record_id": broken'
+        self.write_history(original)
+        manager = JsonDataManager(str(self.path))
+
+        saved = manager.save_record({"record_id": 1})
+
+        self.assertFalse(saved)
+        self.assertEqual(self.read_history(), original)
+
+    def test_invalid_history_structures_are_not_overwritten(self):
+        invalid_histories = (
+            '{"record_id": 1}',
+            '[{"record_id": 1}, "invalid record"]',
+            "null",
+        )
+
+        for original in invalid_histories:
+            with self.subTest(history=original):
+                self.write_history(original)
+                manager = JsonDataManager(str(self.path))
+
+                self.assertEqual(manager.load_records(), [])
+                self.assertFalse(
+                    manager.save_record({"record_id": 2})
+                )
+                self.assertEqual(self.read_history(), original)
+
+    def test_records_are_available_to_a_new_manager_instance(self):
+        first = JsonDataManager(str(self.path))
+        record = {
+            "record_id": 1,
+            "dish_name": "Omelette",
+            "used_ingredients": ["egg"],
+            "cooking_time_mins": 12,
+        }
+
+        self.assertTrue(first.save_record(record))
+
+        second = JsonDataManager(str(self.path))
+
+        self.assertEqual(second.load_records(), [record])
+
+    def test_saving_a_second_record_preserves_the_first(self):
+        manager = JsonDataManager(str(self.path))
+
+        self.assertTrue(manager.save_record({"record_id": 1}))
+        self.assertTrue(manager.save_record({"record_id": 2}))
+
+        self.assertEqual(
+            manager.load_records(),
+            [{"record_id": 1}, {"record_id": 2}],
+        )
+
+    def test_invalid_record_type_does_not_change_history(self):
+        manager = JsonDataManager(str(self.path))
+        self.assertTrue(manager.save_record({"record_id": 1}))
+        original = self.read_history()
+
+        self.assertFalse(
+            manager.save_record(["not", "a", "dict"])
+        )
+        self.assertEqual(self.read_history(), original)
+
+    def test_unserialisable_record_does_not_change_history(self):
+        manager = JsonDataManager(str(self.path))
+        self.assertTrue(manager.save_record({"record_id": 1}))
+        original = self.read_history()
+
+        saved = manager.save_record(
+            {
+                "record_id": 2,
+                "invalid_value": object(),
+            }
+        )
+
+        self.assertFalse(saved)
+        self.assertEqual(self.read_history(), original)
+
+    def test_non_finite_number_does_not_change_history(self):
+        manager = JsonDataManager(str(self.path))
+        self.assertTrue(manager.save_record({"record_id": 1}))
+        original = self.read_history()
+
+        saved = manager.save_record(
+            {
+                "record_id": 2,
+                "amount": float("nan"),
+            }
+        )
+
+        self.assertFalse(saved)
+        self.assertEqual(self.read_history(), original)
+
+    def test_read_permission_error_is_handled(self):
+        manager = JsonDataManager(str(self.path))
+
+        with mock.patch(
+            "builtins.open",
+            side_effect=PermissionError("Access denied"),
+        ):
+            self.assertEqual(manager.load_records(), [])
+
+    def test_storage_creation_failure_is_handled(self):
+        missing_parent = (
+            Path(self.tmp.name) / "missing" / "history.json"
+        )
+
+        manager = JsonDataManager(str(missing_parent))
+
+        self.assertFalse(manager.init_storage())
+        self.assertEqual(manager.load_records(), [])
+        self.assertFalse(
+            manager.save_record({"record_id": 1})
+        )
+
+    def test_query_by_ingredient_is_case_insensitive(self):
+        manager = JsonDataManager(str(self.path))
+        egg_recipe = {
+            "record_id": 1,
+            "used_ingredients": ["egg", "spinach"],
+        }
+        rice_recipe = {
+            "record_id": 2,
+            "used_ingredients": ["rice"],
+        }
+
+        self.assertTrue(manager.save_record(egg_recipe))
+        self.assertTrue(manager.save_record(rice_recipe))
+
+        self.assertEqual(
+            manager.query_by_ingredient(" EGG "),
+            [egg_recipe],
+        )
+
+    def test_query_by_max_time_includes_the_boundary(self):
+        manager = JsonDataManager(str(self.path))
+        quick = {
+            "record_id": 1,
+            "cooking_time_mins": 10,
+        }
+        boundary = {
+            "record_id": 2,
+            "cooking_time_mins": 30,
+        }
+        slow = {
+            "record_id": 3,
+            "cooking_time_mins": 45,
+        }
+
+        for record in (quick, boundary, slow):
+            self.assertTrue(manager.save_record(record))
+
+        self.assertEqual(
+            manager.query_by_max_time(30),
+            [quick, boundary],
+        )
+
+class TestManualValidationTranslator(unittest.TestCase):
+    """Checks that custom exclusions reach the logic manager."""
+
+    def test_custom_exclusions_are_passed_to_logic_preferences(self):
+        request = make_request("peanut")
+        translator = FoodAI.RecipeTranslator()
+
+        preferences = translator.to_logic_preferences(
+            request,
+            ["peanut"],
+        )
+
+        self.assertEqual(
+            preferences["custom_exclusions"],
+            ["peanut"],
+        )
+
+    def test_no_custom_exclusions_produces_an_empty_list(self):
+        request = make_request("none")
+        translator = FoodAI.RecipeTranslator()
+
+        preferences = translator.to_logic_preferences(request, [])
+
+        self.assertEqual(preferences["custom_exclusions"], [])
+
+
+class TestManualValidationAppFlow(AppTestCase):
+    """Checks manual-validation display, counting, and persistence."""
+
+    def test_pending_checks_are_displayed_and_saved(self):
+        recipe = make_recipe(
+            name="Pending omelette",
+            extra=["special sauce"],
+        )
+
+        output = self.run_app(
+            self.make_app(
+                make_request("peanut"),
+                [recipe],
+            )
+        )
+
+        self.assertIn("Pending omelette (", output)
+        self.assertIn("Manual validation:", output)
+        self.assertIn("PENDING", output)
+        self.assertIn(
+            "special sauce: check for peanut",
+            output,
+        )
+        self.assertIn(
+            "1 displayed recipe(s) require manual validation",
+            output,
+        )
+        self.assertIn(
+            "not confirmed suitable for your exclusions",
+            output,
+        )
+
+        records = self.saved()
+        self.assertEqual(len(records), 1)
+
+        record = records[0]
+        self.assertEqual(
+            record["validation_state"],
+            "pending_manual_validation",
+        )
+        self.assertEqual(len(record["manual_validation"]), 1)
+
+        entry = record["manual_validation"][0]
+        self.assertEqual(entry["ingredient"], "special sauce")
+        self.assertEqual(
+            entry["exclusions_to_check"],
+            ["peanut"],
+        )
+        self.assertEqual(entry["status"], "pending")
+        self.assertTrue(entry["reason"])
+
+        reloaded = JsonDataManager(self.data_path).load_records()
+
+        self.assertEqual(
+            reloaded[0]["manual_validation"],
+            record["manual_validation"],
+        )
+        self.assertEqual(
+            reloaded[0]["validation_state"],
+            "pending_manual_validation",
+        )
+
+    def test_clear_recipe_has_no_manual_validation_section(self):
+        output = self.run_app(
+            self.make_app(
+                make_request("peanut"),
+                [make_recipe()],
+            )
+        )
+
+        self.assertIn("Good omelette (", output)
+        self.assertNotIn("Manual validation:", output)
+        self.assertNotIn("require manual validation", output)
+
+        record = self.saved()[0]
+        self.assertEqual(record["manual_validation"], [])
+        self.assertEqual(
+            record["validation_state"],
+            "automated_checks_passed",
+        )
+
+    def test_vague_ingredient_without_exclusions_is_not_pending(self):
+        recipe = make_recipe(
+            name="No exclusions",
+            extra=["special sauce"],
+        )
+
+        output = self.run_app(
+            self.make_app(
+                make_request("none"),
+                [recipe],
+            )
+        )
+
+        self.assertIn("No exclusions (", output)
+        self.assertNotIn("Manual validation:", output)
+
+        record = self.saved()[0]
+        self.assertEqual(record["manual_validation"], [])
+        self.assertEqual(
+            record["validation_state"],
+            "automated_checks_passed",
+        )
+
+    def test_vague_seasoning_is_displayed_and_saved(self):
+        recipe = make_recipe(name="Seasoned omelette")
+        recipe["seasonings"] = ["salt", "special seasoning"]
+
+        output = self.run_app(
+            self.make_app(
+                make_request("peanut"),
+                [recipe],
+            )
+        )
+
+        self.assertIn(
+            "special seasoning: check for peanut",
+            output,
+        )
+
+        record = self.saved()[0]
+
+        self.assertEqual(
+            record["validation_state"],
+            "pending_manual_validation",
+        )
+        self.assertEqual(
+            [
+                entry["ingredient"]
+                for entry in record["manual_validation"]
+            ],
+            ["special seasoning"],
+        )
+
+    def test_pending_count_counts_recipes_not_individual_checks(self):
+        pending = make_recipe(
+            name="Pending",
+            extra=["special sauce", "signature dressing"],
+        )
+        clear = make_recipe(name="Clear")
+
+        output = self.run_app(
+            self.make_app(
+                make_request("peanut"),
+                [pending, clear],
+            )
+        )
+
+        self.assertIn(
+            "1 displayed recipe(s) require manual validation",
+            output,
+        )
+
+        records = self.saved()
+        self.assertEqual(len(records), 2)
+
+        pending_record = next(
+            record
+            for record in records
+            if record["dish_name"] == "Pending"
+        )
+        clear_record = next(
+            record
+            for record in records
+            if record["dish_name"] == "Clear"
+        )
+
+        self.assertEqual(
+            len(pending_record["manual_validation"]),
+            2,
+        )
+        self.assertEqual(
+            {
+                entry["ingredient"]
+                for entry in pending_record["manual_validation"]
+            },
+            {"special sauce", "signature dressing"},
+        )
+        self.assertEqual(
+            pending_record["validation_state"],
+            "pending_manual_validation",
+        )
+
+        self.assertEqual(
+            clear_record["manual_validation"],
+            [],
+        )
+        self.assertEqual(
+            clear_record["validation_state"],
+            "automated_checks_passed",
+        )
+
+    def test_known_conflict_is_not_displayed_or_saved_as_pending(self):
+        recipe = make_recipe(
+            name="Rejected omelette",
+            extra=["special sauce", "peanut butter"],
+        )
+
+        output = self.run_app(
+            self.make_app(
+                make_request("peanut"),
+                [recipe],
+            )
+        )
+
+        self.assertIn("No recipes passed validation.", output)
+        self.assertNotIn("Rejected omelette (", output)
+        self.assertNotIn(
+            "displayed recipe(s) require manual validation",
+            output,
+        )
+        self.assertEqual(
+            JsonDataManager(self.data_path).load_records(),
+            [],
+        )
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
