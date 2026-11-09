@@ -1,5 +1,5 @@
 """
-test_food_ai.py - tests for the application controller (FoodAI.py).
+test_food_ai.py - tests for the application controller (main/recipe_app.py).
 
 Run with:
     python -m unittest test_food_ai -v
@@ -15,8 +15,15 @@ from decimal import Decimal
 from unittest import mock
 from pathlib import Path
 
-import FoodAI
-from ai_manager import AIProvider, AiManager, AITransportError, ErrorLogger, RecipeValidator
+import importlib
+import inspect
+import pkgutil
+
+import main
+from main.recipe_app import RecipeApp
+from main.recipe_presenter import RecipePresenter
+from main.recipe_translator import RecipeTranslator
+from ai_layer import AIProvider, AiManager, AITransportError, ErrorLogger, RecipeValidator
 from data_manager import JsonDataManager
 from IO_manager import IOManager
 from logic_manager import LogicManager
@@ -108,7 +115,7 @@ class AppTestCase(unittest.TestCase):
                 logger=ErrorLogger(log_file=self.log_path),
                 sleep=lambda seconds: None,
             )
-        return FoodAI.RecipeApp(
+        return RecipeApp(
             io_manager=ScriptedIO(request),
             ai_manager=ai_manager,
             logic_manager=LogicManager(),
@@ -210,12 +217,12 @@ class TestRecipeAppFlow(AppTestCase):
 
     def test_create_default_builds_the_real_managers(self):
         with mock.patch.dict(os.environ, {}, clear=True):
-            app = FoodAI.RecipeApp.create_default()
-        self.assertIsInstance(app, FoodAI.RecipeApp)
+            app = RecipeApp.create_default()
+        self.assertIsInstance(app, RecipeApp)
 
 class TestRecipeTranslator(unittest.TestCase):
     def setUp(self):
-        self.translator = FoodAI.RecipeTranslator()
+        self.translator = RecipeTranslator()
 
     def test_ai_input_turns_decimals_into_strings_and_names_the_meal_type(self):
         ai_input = self.translator.to_ai_input(make_request(breakfast=True), ["bacon"])
@@ -265,20 +272,22 @@ class TestRecipeTranslator(unittest.TestCase):
 class TestRecipePresenter(unittest.TestCase):
     def test_output_goes_through_the_function_it_was_given(self):
         lines = []
-        presenter = FoodAI.RecipePresenter(output=lines.append)
+        presenter = RecipePresenter(output=lines.append)
         presenter.show_message("hello")
         presenter.show_summary(2, 5)
         self.assertEqual(lines[0], "hello")
         self.assertIn("2 of 5 generated recipe(s) passed validation", lines[1])
 
 class TestNoProceduralCodeRemains(unittest.TestCase):
-    def test_the_module_defines_no_standalone_functions(self):
-        import inspect
-
-        functions = [
-            name for name, obj in vars(FoodAI).items()
-            if inspect.isfunction(obj) and obj.__module__ == FoodAI.__name__
-        ]
+    def test_no_module_in_the_package_defines_standalone_functions(self):
+        functions = []
+        for info in pkgutil.iter_modules(main.__path__):
+            module = importlib.import_module(f"{main.__name__}.{info.name}")
+            functions += [
+                f"{module.__name__}.{name}"
+                for name, obj in vars(module).items()
+                if inspect.isfunction(obj) and obj.__module__ == module.__name__
+            ]
         self.assertEqual(functions, [])
 
 class TestJsonDataManager(unittest.TestCase):
@@ -496,7 +505,7 @@ class TestManualValidationTranslator(unittest.TestCase):
 
     def test_custom_exclusions_are_passed_to_logic_preferences(self):
         request = make_request("peanut")
-        translator = FoodAI.RecipeTranslator()
+        translator = RecipeTranslator()
 
         preferences = translator.to_logic_preferences(
             request,
@@ -510,7 +519,7 @@ class TestManualValidationTranslator(unittest.TestCase):
 
     def test_no_custom_exclusions_produces_an_empty_list(self):
         request = make_request("none")
-        translator = FoodAI.RecipeTranslator()
+        translator = RecipeTranslator()
 
         preferences = translator.to_logic_preferences(request, [])
 

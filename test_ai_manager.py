@@ -18,7 +18,7 @@ import unittest
 import urllib.error
 from unittest import mock
 
-import ai_manager as ai
+import ai_layer as ai
 
 
 SAMPLE_REQUEST = {
