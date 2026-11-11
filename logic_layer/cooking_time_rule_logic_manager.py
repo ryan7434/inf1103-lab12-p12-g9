@@ -1,5 +1,5 @@
-from recipe_rule_logic_manager import RecipeRule
-from rule_result_logic_manager import RuleResult
+from logic_layer.recipe_rule_logic_manager import RecipeRule
+from logic_layer.rule_result_logic_manager import RuleResult
 
 
 class CookingTimeRule(RecipeRule):

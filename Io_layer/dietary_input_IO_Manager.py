@@ -1,4 +1,4 @@
-from dictionary import DIETARY_CHOICES
+from Io_layer.dictionary import DIETARY_CHOICES
 
 
 class DietaryInput:

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from status_logic_manager import Status
+from logic_layer.status_logic_manager import Status
 
 
 @dataclass

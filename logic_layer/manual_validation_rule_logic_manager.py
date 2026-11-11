@@ -1,8 +1,8 @@
 import re
 
-from dictionary import IngredientCatalog
-from recipe_rule_logic_manager import RecipeRule
-from rule_result_logic_manager import RuleResult
+from Io_layer.dictionary import IngredientCatalog
+from logic_layer.recipe_rule_logic_manager import RecipeRule
+from logic_layer.rule_result_logic_manager import RuleResult
 
 
 class ManualValidationRule(RecipeRule):

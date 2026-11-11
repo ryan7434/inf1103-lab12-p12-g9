@@ -19,11 +19,19 @@ import importlib
 import inspect
 import pkgutil
 
-import main
-from main.recipe_app import RecipeApp
-from main.recipe_presenter import RecipePresenter
-from main.recipe_translator import RecipeTranslator
-from ai_layer import AIProvider, AiManager, AITransportError, ErrorLogger, RecipeValidator
+import FoodAI_Main_layer
+
+from FoodAI_Main_layer.recipe_app import RecipeApp
+from FoodAI_Main_layer.recipe_presenter import RecipePresenter
+from FoodAI_Main_layer.recipe_translator import RecipeTranslator
+
+from ai_layer import (
+    AIProvider,
+    AiManager,
+    AITransportError,
+    ErrorLogger,
+    RecipeValidator,
+)
 from data_manager import JsonDataManager
 from IO_manager import IOManager
 from logic_manager import LogicManager
@@ -281,13 +289,16 @@ class TestRecipePresenter(unittest.TestCase):
 class TestNoProceduralCodeRemains(unittest.TestCase):
     def test_no_module_in_the_package_defines_standalone_functions(self):
         functions = []
-        for info in pkgutil.iter_modules(main.__path__):
-            module = importlib.import_module(f"{main.__name__}.{info.name}")
+
+        for info in pkgutil.iter_modules(FoodAI_Main_layer.__path__):
+            module = importlib.import_module(
+                f"{FoodAI_Main_layer.__name__}.{info.name}")
             functions += [
                 f"{module.__name__}.{name}"
                 for name, obj in vars(module).items()
-                if inspect.isfunction(obj) and obj.__module__ == module.__name__
-            ]
+                if inspect.isfunction(obj)
+                and obj.__module__ == module.__name__]
+
         self.assertEqual(functions, [])
 
 class TestJsonDataManager(unittest.TestCase):

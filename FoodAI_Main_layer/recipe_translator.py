@@ -1,7 +1,7 @@
 from datetime import datetime
 from fractions import Fraction
 
-from dictionary import (
+from Io_layer.dictionary import (
     DIETARY_CHOICES,
     HALAL_RESTRICTED_INGREDIENTS,
     IngredientCatalog,

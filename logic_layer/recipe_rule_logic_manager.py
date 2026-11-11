@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from rule_result_logic_manager import RuleResult
+from logic_layer.rule_result_logic_manager import RuleResult
 
 
 class RecipeRule(ABC):

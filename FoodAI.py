@@ -1,4 +1,4 @@
-from main.recipe_app import RecipeApp
+from FoodAI_Main_layer.recipe_app import RecipeApp
 
 
 if __name__ == "__main__":

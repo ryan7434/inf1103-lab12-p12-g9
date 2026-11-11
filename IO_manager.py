@@ -1,9 +1,9 @@
-from console_IO_Manager import ConsoleIO
-from dietary_input_IO_Manager import DietaryInput
-from ingredient_input_IO_Manager import IngredientInput
-from preferences_input_IO_Manager import PreferencesInput
+from Io_layer.console_IO_Manager import ConsoleIO
+from Io_layer.dietary_input_IO_Manager import DietaryInput
+from Io_layer.ingredient_input_IO_Manager import IngredientInput
+from Io_layer.preferences_input_IO_Manager import PreferencesInput
 
-from dictionary import IngredientCatalog
+from Io_layer.dictionary import IngredientCatalog
 
 
 class IOManager:

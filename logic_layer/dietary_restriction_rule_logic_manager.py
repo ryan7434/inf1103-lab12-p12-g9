@@ -1,9 +1,9 @@
-from recipe_rule_logic_manager import RecipeRule
-from rule_result_logic_manager import RuleResult
-from dietary_check_logic_manager import DietaryCheck
+from logic_layer.recipe_rule_logic_manager import RecipeRule
+from logic_layer.rule_result_logic_manager import RuleResult
+from logic_layer.dietary_check_logic_manager import DietaryCheck
 
 import re
-from dictionary import (
+from Io_layer.dictionary import (
     INGREDIENT_ALLERGENS,
     ALLERGEN_RESTRICTIONS,
     IngredientCatalog,

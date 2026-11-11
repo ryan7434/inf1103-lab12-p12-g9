@@ -1,5 +1,5 @@
-from recipe_rule_logic_manager import RecipeRule
-from rule_result_logic_manager import RuleResult
+from logic_layer.recipe_rule_logic_manager import RecipeRule
+from logic_layer.rule_result_logic_manager import RuleResult
 
 # checks recipe uses at least 3 of the user's ingredient input
 class MainIngredientRule(RecipeRule):
