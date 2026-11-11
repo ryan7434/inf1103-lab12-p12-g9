@@ -2,9 +2,13 @@ class RecipePromptBuilder:
     """Turns the user's request (a dict from the IO layer) into the prompt text."""
 
     def build(self, user_input: dict) -> str:
+         # Turn the ingredient list into one line of text, e.g. "2 pieces egg, 200 g spinach".
         ingredients_text = self._format_ingredients(user_input.get("ingredients", []))
+        # Join restrictions with commas, or say "None" if there are no restrictions.
         restrictions_text = ", ".join(user_input.get("dietary_restrictions", [])) or "None"
 
+        # Fill the user's choices into the prompt. .get(key, default) supplies a
+        # fallback value when the user did not provide something.
         prompt = f"""
 Generate exactly 5 different recipes using these constraints.
 
@@ -35,8 +39,10 @@ Rules:
 - Keep descriptions and instructions concise.
 - Set is_breakfast to true only if the actual dish is normally suitable for breakfast in the requested cuisine. Do not set it to true merely because the requested meal type is Breakfast.
 """
-        return prompt.strip()
+        return prompt.strip()    # strip() removes the blank lines at the start and end of the prompt.
 
+    # Converts the ingredient dicts into readable text, e.g.
+    # [{"name": "egg", "quantity": 2, "unit": "pieces"}] -> "2 pieces egg"
     @staticmethod
     def _format_ingredients(ingredients: list) -> str:
         return ", ".join(

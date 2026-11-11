@@ -2,12 +2,17 @@
 
 
 # Makes it so the output is in this format
+# This is sent to Gemini (as "responseSchema") so it must reply with a list of
+# recipe objects shaped like the one below. Gemini's schema format uses
+# upper-case type names such as ARRAY, OBJECT, STRING, NUMBER and BOOLEAN.
 RECIPE_RESPONSE_SCHEMA = {
-    "type": "ARRAY",
+    "type": "ARRAY",      # the reply is a list of recipes
     "items": {
-        "type": "OBJECT",
+        "type": "OBJECT",    # each recipe is an object with these fields
         "properties": {
             "recipe_name": {"type": "STRING"},
+            # List of ingredients, each with a name, quantity and unit.
+            # Quantity is a STRING so values like "1/2" are allowed.
             "ingredients": {
                 "type": "ARRAY",
                 "items": {
@@ -23,6 +28,7 @@ RECIPE_RESPONSE_SCHEMA = {
             "description": {
                 "type": "STRING",
                 "description": (
+                    # The description tells the AI what to write in this field.
                     "Explain how this recipe fits the requested cuisine and taste preference"
                 ),
             },
@@ -30,6 +36,7 @@ RECIPE_RESPONSE_SCHEMA = {
                 "type": "ARRAY",
                 "items": {"type": "STRING"},
             },
+            # Step-by-step cooking instructions, one string per step.
             "instructions": {
                 "type": "ARRAY",
                 "items": {"type": "STRING"},
@@ -43,6 +50,7 @@ RECIPE_RESPONSE_SCHEMA = {
                 ),
             },
         },
+        # The AI must include every one of these fields in each recipe.
         "required": [
             "recipe_name",
             "ingredients",

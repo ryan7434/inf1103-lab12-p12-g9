@@ -2,6 +2,8 @@
     makes folder a real package meaning a folder of modules you can import from
 """
 
+# Importing the classes here lets other files write `from ai_layer import AIError`
+# instead of naming the individual module file each time.
 from .ai_provider import AIProvider
 from .gemini_provider import GeminiProvider
 from .error_logger import ErrorLogger
@@ -15,6 +17,7 @@ from .response_validator import ResponseValidator
 from .response_parser import ResponseParser
 from .recipe_prompt_builder import RecipePromptBuilder
 
+# __all__ lists the names that `from ai_layer import *` will expose.
 __all__ = [
     "AIProvider", "GeminiProvider", "ErrorLogger",
     "AIError", "AIConfigurationError", "AITransportError",
