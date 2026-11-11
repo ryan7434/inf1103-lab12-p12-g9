@@ -2,7 +2,10 @@
 test_food_ai.py - tests for the application controller (main/recipe_app.py).
 
 Run with:
-    python -m unittest test_food_ai -v
+    python -m unittest test_files.test_food_ai -v 
+
+run whole test file folder with:
+    python -m pytest test_files -v
 """
 
 import contextlib
