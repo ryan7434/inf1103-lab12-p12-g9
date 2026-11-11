@@ -1,4 +1,4 @@
-from ai_layer import AiManager
+from ai_manager import AiManager
 from data_manager import BaseDataManager, JsonDataManager
 from IO_manager import IOManager
 from logic_manager import LogicManager, Status

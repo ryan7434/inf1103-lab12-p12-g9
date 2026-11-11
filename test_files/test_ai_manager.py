@@ -5,7 +5,7 @@ No live API is used anywhere: replies come from a stub provider or from a
 mocked urllib.request.urlopen, so the suite runs offline and inside Docker.
 
 Run with:
-    python -m unittest test_ai_manager -v
+    python -m unittest test_files.test_ai_manager -v
 """
 
 import contextlib
@@ -19,7 +19,7 @@ import urllib.error
 from unittest import mock
 
 import ai_layer as ai
-
+from ai_manager import AiManager
 
 SAMPLE_REQUEST = {
     "ingredients": [
@@ -380,7 +380,7 @@ class ManagerTestCase(unittest.TestCase):
 
     def make_manager(self, replies, max_attempts=2):
         stub = StubProvider(replies)
-        manager = ai.AiManager(
+        manager = AiManager(
             provider=stub,
             logger=ai.ErrorLogger(log_file=self.log_path),
             max_attempts=max_attempts,
@@ -471,7 +471,7 @@ class TestAiManagerGenerateRecipes(ManagerTestCase):
 
     def test_rejects_a_nonsensical_attempt_count(self):
         with self.assertRaises(ValueError):
-            ai.AiManager(StubProvider(["[]"]), ai.ErrorLogger(), max_attempts=0)
+            AiManager(StubProvider(["[]"]), ai.ErrorLogger(), max_attempts=0)
 
     def test_is_valid_recipe_uses_the_same_rules_as_generation(self):
         manager, _ = self.make_manager(["[]"])
@@ -504,7 +504,7 @@ class TestAiManagerDesign(ManagerTestCase):
             ),
         ):
             with self.subTest(provider=name), patcher:
-                manager = ai.AiManager(
+                manager = AiManager(
                     provider, ai.ErrorLogger(log_file=self.log_path), sleep=self.sleeps.append
                 )
                 self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [good_recipe()])
@@ -513,8 +513,8 @@ class TestAiManagerDesign(ManagerTestCase):
         # aggregation: the provider lives on its own, outside any one manager
         stub = StubProvider([json.dumps([good_recipe()])])
         logger = ai.ErrorLogger(log_file=self.log_path)
-        first = ai.AiManager(stub, logger)
-        second = ai.AiManager(stub, logger)
+        first = AiManager(stub, logger)
+        second = AiManager(stub, logger)
         first.generate_recipes(SAMPLE_REQUEST)
         second.generate_recipes(SAMPLE_REQUEST)
         self.assertEqual(len(stub.prompts), 2)
@@ -523,7 +523,7 @@ class TestAiManagerDesign(ManagerTestCase):
         with mock.patch.dict(os.environ, {}, clear=True), \
                 mock.patch.object(ai.ErrorLogger, "log"), \
                 mock.patch("urllib.request.urlopen") as urlopen:
-            manager = ai.AiManager.from_environment()
+            manager = AiManager.from_environment()
             self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [])
         urlopen.assert_not_called()
 
@@ -531,7 +531,7 @@ class TestAiManagerDesign(ManagerTestCase):
         body = gemini_body(json.dumps([good_recipe()]))
         with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "env-key"}, clear=True), \
                 mock.patch("urllib.request.urlopen", return_value=fake_http_response(body)) as urlopen:
-            recipes = ai.AiManager.from_environment().generate_recipes(SAMPLE_REQUEST)
+            recipes = AiManager.from_environment().generate_recipes(SAMPLE_REQUEST)
         self.assertEqual(recipes, [good_recipe()])
         self.assertIn("key=env-key", urlopen.call_args[0][0].full_url)
 

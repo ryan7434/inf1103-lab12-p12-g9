@@ -2,7 +2,6 @@
     makes folder a real package meaning a folder of modules you can import from
 """
 
-from .ai_manager import AiManager
 from .ai_provider import AIProvider
 from .gemini_provider import GeminiProvider
 from .error_logger import ErrorLogger
@@ -17,7 +16,7 @@ from .response_parser import ResponseParser
 from .recipe_prompt_builder import RecipePromptBuilder
 
 __all__ = [
-    "AiManager", "AIProvider", "GeminiProvider", "ErrorLogger",
+    "AIProvider", "GeminiProvider", "ErrorLogger",
     "AIError", "AIConfigurationError", "AITransportError",
     "AIRateLimitError", "AIResponseError",
     "RecipeValidator", "ResponseValidator", "ResponseParser",
