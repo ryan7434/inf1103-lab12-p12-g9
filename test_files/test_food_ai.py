@@ -27,11 +27,11 @@ from FoodAI_Main_layer.recipe_translator import RecipeTranslator
 
 from ai_layer import (
     AIProvider,
-    AiManager,
     AITransportError,
     ErrorLogger,
     RecipeValidator,
 )
+from ai_manager import AiManager
 from data_manager import JsonDataManager
 from IO_manager import IOManager
 from logic_manager import LogicManager
