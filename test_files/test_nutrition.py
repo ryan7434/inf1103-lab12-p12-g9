@@ -5,6 +5,8 @@ from ai_layer.recipe_schema import RECIPE_RESPONSE_SCHEMA
 from ai_layer.nutrition_estimate import NutritionEstimate
 from types import SimpleNamespace
 from FoodAI_Main_layer.recipe_presenter import RecipePresenter
+from FoodAI_Main_layer.recipe_translator import RecipeTranslator
+from data_manager import JsonDataManager
 
 
 @pytest.fixture
@@ -176,7 +178,6 @@ class TestNutritionSchema:
         }
 
 
-
 class TestNutritionPresenter:
     @staticmethod
     def render_recipe(recipe):
@@ -309,3 +310,188 @@ class TestNutritionPresenter:
         assert "Estimated nutrition per serving:" in text
         assert "Note: Test recipe warning." in text
         assert "could not save this recipe to recipes_history.json" in text
+
+
+class TestNutritionPersistence:
+    @staticmethod
+    def make_record(recipe):
+        translator = RecipeTranslator()
+
+        return translator.to_record(
+            record_id=1,
+            recipe=recipe,
+            req={
+                "ingredients": [
+                    {
+                        "name": "rice",
+                        "quantity": "100",
+                        "unit": "g",
+                    },
+                ],
+            },
+            ai_input={
+                "cuisine": "Any",
+                "meal_type": "Any",
+                "taste_preference": "Any",
+                "dietary_restrictions": [],
+            },
+        )
+
+
+    def test_record_contains_validated_nutrition(self, recipe):
+        record = self.make_record(recipe)
+
+        assert record["nutrition_status"] == "estimated"
+        assert record["nutrition"] == recipe["nutrition"]
+        assert record["nutrition_per_serving"] == {
+            "calories_kcal": 300,
+            "protein_g": 20,
+            "carbohydrates_g": 25,
+            "fat_g": 13,
+        }
+
+
+    def test_missing_nutrition_is_saved_as_unavailable(self, recipe):
+        del recipe["nutrition"]
+
+        record = self.make_record(recipe)
+
+        assert record["dish_name"] == recipe["recipe_name"]
+        assert record["nutrition_status"] == "unavailable"
+        assert record["nutrition"] is None
+        assert record["nutrition_per_serving"] is None
+
+
+    def test_missing_nutrient_is_saved_as_unavailable(self, recipe):
+        del recipe["nutrition"]["protein_g"]
+
+        record = self.make_record(recipe)
+
+        assert record["nutrition_status"] == "unavailable"
+        assert record["nutrition"] is None
+        assert record["nutrition_per_serving"] is None
+
+
+    @pytest.mark.parametrize(
+        "value",
+        [-1, True, "100", None, float("nan"), float("inf")],
+    )
+    def test_invalid_nutrition_does_not_prevent_saving(
+        self, recipe, value, tmp_path
+    ):
+        recipe["nutrition"]["calories_kcal"] = value
+
+        record = self.make_record(recipe)
+        path = str(tmp_path / "recipes_history.json")
+        manager = JsonDataManager(file_path=path)
+
+        assert record["nutrition_status"] == "unavailable"
+        assert record["nutrition"] is None
+        assert record["nutrition_per_serving"] is None
+        assert manager.save_record(record) is True
+
+        reloaded = JsonDataManager(file_path=path).load_records()
+
+        assert reloaded == [record]
+
+
+    @pytest.mark.parametrize(
+        "servings",
+        [0, -1, True, "2", None, float("nan"), float("inf")],
+    )
+    def test_invalid_servings_make_nutrition_unavailable(
+        self, recipe, servings
+    ):
+        recipe["servings"] = servings
+
+        record = self.make_record(recipe)
+
+        assert record["nutrition_status"] == "unavailable"
+        assert record["nutrition"] is None
+        assert record["nutrition_per_serving"] is None
+
+
+    def test_valid_nutrition_survives_save_and_reload(self, recipe, tmp_path):
+        record = self.make_record(recipe)
+        path = str(tmp_path / "recipes_history.json")
+        manager = JsonDataManager(file_path=path)
+
+        assert manager.save_record(record) is True
+
+        reloaded = JsonDataManager(file_path=path).load_records()
+
+        assert len(reloaded) == 1
+        assert reloaded[0]["nutrition"] == record["nutrition"]
+        assert (
+            reloaded[0]["nutrition_per_serving"]
+            == record["nutrition_per_serving"]
+        )
+        assert reloaded[0]["nutrition_status"] == "estimated"
+
+
+    def test_older_record_without_nutrition_can_still_load(self, tmp_path):
+        path = str(tmp_path / "recipes_history.json")
+        manager = JsonDataManager(file_path=path)
+
+        old_record = {
+            "record_id": 1,
+            "dish_name": "Older saved recipe",
+            "servings": 2,
+            "used_ingredients": ["rice"],
+            "cooking_time_mins": 10,
+        }
+
+        assert manager.save_record(old_record) is True
+
+        reloaded = JsonDataManager(file_path=path).load_records()
+
+        assert reloaded == [old_record]
+        assert "nutrition" not in reloaded[0]
+
+
+    def test_displayed_values_match_saved_values(self, recipe):
+        record = self.make_record(recipe)
+        output = []
+        presenter = RecipePresenter(output=output.append)
+
+        evaluation = SimpleNamespace(
+            manual_validation=[],
+            warning=None,
+        )
+
+        presenter.show_recipe(recipe, evaluation, saved=True)
+
+        text = "\n".join(output)
+        values = record["nutrition_per_serving"]
+
+        assert f"Calories: {values['calories_kcal']:.0f} kcal" in text
+        assert f"Protein: {values['protein_g']:.1f} g" in text
+        assert (
+            f"Carbohydrates: {values['carbohydrates_g']:.1f} g"
+            in text
+        )
+        assert f"Fat: {values['fat_g']:.1f} g" in text
+
+
+    def test_display_labels_estimate_and_record_saves_ai_method(self, recipe):
+        record = self.make_record(recipe)
+        output = []
+        presenter = RecipePresenter(output=output.append)
+
+
+        evaluation = SimpleNamespace(
+            manual_validation=[],
+            warning=None,
+        )
+
+
+        presenter.show_recipe(recipe, evaluation, saved=True)
+
+
+        text = "\n".join(output)
+
+
+        assert record["nutrition"]["method"] == "ai_estimate"
+        assert "Estimated nutrition per serving:" in text
+        assert ("Estimated nutrition based on the recipe's ingredient quantities." in text
+        )

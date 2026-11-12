@@ -104,5 +104,5 @@ class RecipePresenter:
         )
         self._output(f"Fat: {values['fat_g']:.1f} g")
         self._output(
-            "Estimated from the recipe's ingredient quantities."
+            "Estimated nutrition based on the recipe's ingredient quantities."
         )

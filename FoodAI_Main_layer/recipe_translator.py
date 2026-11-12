@@ -1,5 +1,6 @@
 from datetime import datetime
 from fractions import Fraction
+from ai_layer.nutrition_estimate import NutritionEstimate
 
 from Io_layer.dictionary import (
     DIETARY_CHOICES,
@@ -105,6 +106,14 @@ class RecipeTranslator:
         ]
         used = [name for name in recipe_names if name in user_names]
         missing = [name for name in recipe_names if name not in user_names]
+        #validate whole-recipe nutrition and calculate per-serving values
+        estimate = NutritionEstimate.from_recipe(recipe)
+
+        per_serving = (
+            estimate.per_serving(recipe.get("servings"))
+            if estimate is not None
+            else None
+        )
 
         return {
             "record_id": record_id,
@@ -116,6 +125,15 @@ class RecipeTranslator:
             "seasonings_suggested": recipe.get("seasonings", []),
             "cooking_time_mins": recipe.get("estimated_cooking_time_minutes", 0),
             "servings": recipe.get("servings", 0),
+            "nutrition": (
+                estimate.to_dict()
+                if estimate is not None and per_serving is not None
+                else None),
+            "nutrition_per_serving": per_serving,
+            "nutrition_status": (
+                "estimated"
+                if per_serving is not None
+                else "unavailable"),
             "cuisine": ai_input["cuisine"],
             "meal_type": ai_input["meal_type"],
             "taste_preference": ai_input["taste_preference"],
