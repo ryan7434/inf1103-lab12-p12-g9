@@ -3,12 +3,29 @@ import pytest
 from ai_layer.recipe_prompt_builder import RecipePromptBuilder
 from ai_layer.recipe_schema import RECIPE_RESPONSE_SCHEMA
 from ai_layer.nutrition_estimate import NutritionEstimate
+from types import SimpleNamespace
+from FoodAI_Main_layer.recipe_presenter import RecipePresenter
 
 
 @pytest.fixture
 def recipe():
     return {
+        "recipe_name": "Nutrition test recipe",
+        "description": "A recipe used for testing nutrition display.",
+        "estimated_cooking_time_minutes": 10,
         "servings": 2,
+        "is_breakfast": False,
+        "ingredients": [
+            {
+                "name": "rice",
+                "quantity": "100",
+                "unit": "g",
+            },
+        ],
+        "seasonings": [],
+        "instructions": [
+            "Cook the rice.",
+        ],
         "nutrition": {
             "basis": "whole_recipe",
             "method": "ai_estimate",
@@ -157,3 +174,138 @@ class TestNutritionSchema:
             "type": "STRING",
             "enum": ["ai_estimate"],
         }
+
+
+
+class TestNutritionPresenter:
+    @staticmethod
+    def render_recipe(recipe):
+        output = []
+        presenter = RecipePresenter(output=output.append)
+
+        evaluation = SimpleNamespace(
+            manual_validation=[],
+            warning=None,
+        )
+
+        presenter.show_recipe(recipe, evaluation, saved=True)
+
+        return "\n".join(output)
+
+
+    def test_displays_nutrition_per_serving(self, recipe):
+        text = self.render_recipe(recipe)
+
+        assert "Estimated nutrition per serving:" in text
+        assert "Calories: 300 kcal" in text
+        assert "Protein: 20.0 g" in text
+        assert "Carbohydrates: 25.0 g" in text
+        assert "Fat: 13.0 g" in text
+
+
+    def test_displays_estimate_label(self, recipe):
+        text = self.render_recipe(recipe)
+
+        assert "Estimated nutrition per serving:" in text
+
+
+    def test_missing_nutrition_displays_unavailable(self, recipe):
+        del recipe["nutrition"]
+
+        text = self.render_recipe(recipe)
+
+        assert "Estimated nutrition: unavailable." in text
+        assert "Estimated nutrition per serving:" not in text
+        assert recipe["recipe_name"] in text
+
+
+    def test_missing_nutrient_displays_unavailable(self, recipe):
+        del recipe["nutrition"]["protein_g"]
+
+        text = self.render_recipe(recipe)
+
+        assert "Estimated nutrition: unavailable." in text
+        assert "Calories:" not in text
+
+
+    @pytest.mark.parametrize(
+        "value",
+        [-1, True, "100", None, float("nan"), float("inf")],
+    )
+    def test_invalid_nutrition_displays_unavailable(self, recipe, value):
+        recipe["nutrition"]["calories_kcal"] = value
+
+        text = self.render_recipe(recipe)
+
+        assert "Estimated nutrition: unavailable." in text
+        assert "Estimated nutrition per serving:" not in text
+
+
+    @pytest.mark.parametrize(
+        "servings",
+        [0, -1, True, "2", None, float("nan"), float("inf")],
+    )
+    def test_invalid_servings_displays_unavailable(self, recipe, servings):
+        recipe["servings"] = servings
+
+        text = self.render_recipe(recipe)
+
+        assert "Estimated nutrition: unavailable." in text
+        assert "Estimated nutrition per serving:" not in text
+
+
+    def test_missing_servings_displays_unavailable(self, recipe):
+        del recipe["servings"]
+
+        text = self.render_recipe(recipe)
+
+        assert "Estimated nutrition: unavailable." in text
+        assert "Estimated nutrition per serving:" not in text
+
+
+    def test_nutrition_is_displayed_once_with_manual_validation(self, recipe):
+        output = []
+        presenter = RecipePresenter(output=output.append)
+
+        evaluation = SimpleNamespace(
+            manual_validation=[
+                {
+                    "ingredient": "special sauce",
+                    "exclusions_to_check": ["peanut"],
+                    "reason": "The sauce composition needs checking.",
+                },
+                {
+                    "ingredient": "signature dressing",
+                    "exclusions_to_check": ["peanut"],
+                    "reason": "The dressing composition needs checking.",
+                },
+            ],
+            warning=None,
+        )
+
+        presenter.show_recipe(recipe, evaluation, saved=True)
+
+        text = "\n".join(output)
+
+        assert "Manual validation:" in text
+        assert "special sauce: check for peanut" in text
+        assert "signature dressing: check for peanut" in text
+        assert text.count("Estimated nutrition per serving:") == 1
+
+
+    def test_warning_and_save_failure_are_still_displayed(self, recipe):
+        output = []
+        presenter = RecipePresenter(output=output.append)
+
+        evaluation = SimpleNamespace(
+            manual_validation=[],
+            warning="Test recipe warning.",
+        )
+
+        presenter.show_recipe(recipe, evaluation, saved=False)
+
+        text = "\n".join(output)
+
+        assert "Estimated nutrition per serving:" in text
+        assert "Note: Test recipe warning." in text
+        assert "could not save this recipe to recipes_history.json" in text

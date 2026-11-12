@@ -1,3 +1,6 @@
+from ai_layer.nutrition_estimate import NutritionEstimate
+
+
 class RecipePresenter:
     """Prints recipes to the console. Only knows how to display."""
 
@@ -67,6 +70,8 @@ class RecipePresenter:
                     f"{item['reason']}"
                 )
 
+        self._show_nutrition(recipe)
+
         if evaluation.warning:
             write(f"\nNote: {evaluation.warning}")
 
@@ -76,3 +81,28 @@ class RecipePresenter:
             )
 
         write("")
+
+    def _show_nutrition(self, recipe):
+        """Display validated nutrition estimates per serving."""
+        estimate = NutritionEstimate.from_recipe(recipe)
+
+        values = (
+            estimate.per_serving(recipe.get("servings"))
+            if estimate is not None
+            else None
+        )
+
+        if values is None:
+            self._output("\nEstimated nutrition: unavailable.")
+            return
+
+        self._output("\nEstimated nutrition per serving:")
+        self._output(f"Calories: {values['calories_kcal']:.0f} kcal")
+        self._output(f"Protein: {values['protein_g']:.1f} g")
+        self._output(
+            f"Carbohydrates: {values['carbohydrates_g']:.1f} g"
+        )
+        self._output(f"Fat: {values['fat_g']:.1f} g")
+        self._output(
+            "Estimated from the recipe's ingredient quantities."
+        )
