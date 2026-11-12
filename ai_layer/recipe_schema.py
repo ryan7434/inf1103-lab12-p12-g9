@@ -49,6 +49,34 @@ RECIPE_RESPONSE_SCHEMA = {
                     "True if this recipe is suitable for breakfast, false otherwise"
                 ),
             },
+            # AI-estimated nutrition totals for the whole recipe.
+            # Python divides these totals by servings for per-serving values.
+            "nutrition": {
+                "type": "OBJECT",
+                "properties": {
+                    "basis": {
+                        "type": "STRING",
+                        "enum": ["whole_recipe"],
+                    },
+                    "method": {
+                        "type": "STRING",
+                        "enum": ["ai_estimate"],
+                    },
+                    "calories_kcal": {"type": "NUMBER"},
+                    "protein_g": {"type": "NUMBER"},
+                    "carbohydrates_g": {"type": "NUMBER"},
+                    "fat_g": {"type": "NUMBER"},
+                },
+                # Every nutrition object must include these fields.
+                "required": [
+                    "basis",
+                    "method",
+                    "calories_kcal",
+                    "protein_g",
+                    "carbohydrates_g",
+                    "fat_g",
+                ],
+            },
         },
         # The AI must include every one of these fields in each recipe.
         "required": [
@@ -60,6 +88,7 @@ RECIPE_RESPONSE_SCHEMA = {
             "estimated_cooking_time_minutes",
             "servings",
             "is_breakfast",
+            "nutrition",
         ],
     },
 }

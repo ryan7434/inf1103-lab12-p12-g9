@@ -1,5 +1,7 @@
 from copy import deepcopy
 import pytest
+from ai_layer.recipe_prompt_builder import RecipePromptBuilder
+from ai_layer.recipe_schema import RECIPE_RESPONSE_SCHEMA
 from ai_layer.nutrition_estimate import NutritionEstimate
 
 
@@ -94,3 +96,64 @@ class TestNutritionEstimate:
     @pytest.mark.parametrize("value", [None, [], "invalid"])
     def test_non_dictionary_recipe_is_unavailable(self, value):
         assert NutritionEstimate.from_recipe(value) is None
+
+class TestNutritionPrompt:
+    def test_prompt_requests_whole_recipe_nutrition(self):
+        prompt = RecipePromptBuilder().build({})
+
+        assert "WHOLE recipe" in prompt
+        assert "all servings combined, not one serving" in prompt
+
+    def test_prompt_requests_all_nutrition_fields(self):
+        prompt = RecipePromptBuilder().build({})
+
+        for field in NutritionEstimate.FIELDS:
+            assert field in prompt
+
+    def test_prompt_identifies_estimation_method(self):
+        prompt = RecipePromptBuilder().build({})
+
+        assert "whole_recipe" in prompt
+        assert "ai_estimate" in prompt
+        assert "not verified nutritional measurements" in prompt
+
+
+class TestNutritionSchema:
+    def test_recipe_schema_requires_nutrition(self):
+        recipe_schema = RECIPE_RESPONSE_SCHEMA["items"]
+
+        assert "nutrition" in recipe_schema["properties"]
+        assert "nutrition" in recipe_schema["required"]
+
+    def test_nutrition_schema_requires_numeric_nutrients(self):
+        nutrition_schema = (
+            RECIPE_RESPONSE_SCHEMA["items"]["properties"]["nutrition"]
+        )
+
+        assert nutrition_schema["type"] == "OBJECT"
+
+        for field in NutritionEstimate.FIELDS:
+            assert field in nutrition_schema["required"]
+            assert nutrition_schema["properties"][field]["type"] == "NUMBER"
+
+    def test_nutrition_schema_requires_whole_recipe_basis(self):
+        nutrition_schema = (
+            RECIPE_RESPONSE_SCHEMA["items"]["properties"]["nutrition"]
+        )
+
+        assert "basis" in nutrition_schema["required"]
+        assert nutrition_schema["properties"]["basis"] == {
+            "type": "STRING",
+            "enum": ["whole_recipe"],
+        }
+
+    def test_nutrition_schema_requires_ai_estimate_method(self):
+        nutrition_schema = (
+            RECIPE_RESPONSE_SCHEMA["items"]["properties"]["nutrition"]
+        )
+
+        assert "method" in nutrition_schema["required"]
+        assert nutrition_schema["properties"]["method"] == {
+            "type": "STRING",
+            "enum": ["ai_estimate"],
+        }

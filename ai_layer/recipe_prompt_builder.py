@@ -38,6 +38,17 @@ Rules:
 - Try to match the requested cuisine where possible, but allow other cuisines if needed. If the cuisine is any, any cuisine is acceptable.
 - Keep descriptions and instructions concise.
 - Set is_breakfast to true only if the actual dish is normally suitable for breakfast in the requested cuisine. Do not set it to true merely because the requested meal type is Breakfast.
+
+Nutrition estimation rules:
+- Include a nutrition object for every recipe.
+- Estimate nutrition for the WHOLE recipe using the actual ingredient quantities, including cooking oil, sauces and seasonings.
+- Set nutrition.basis to "whole_recipe".
+- Set nutrition.method to "ai_estimate".
+- Include these numeric fields: calories_kcal, protein_g, carbohydrates_g, fat_g.
+- All nutrition values must be finite and non-negative.
+- Do not put units or explanatory text inside numeric fields.
+- Nutrition values must cover all servings combined, not one serving.
+- These are approximate estimates, not verified nutritional measurements.
 """
         return prompt.strip()    # strip() removes the blank lines at the start and end of the prompt.
 
