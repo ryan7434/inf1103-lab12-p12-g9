@@ -9,6 +9,22 @@ from FoodAI_Main_layer.recipe_translator import RecipeTranslator
 from data_manager import JsonDataManager
 
 
+INVALID_NUTRIENT_VALUES = [-1, True, "100", None, float("nan"), float("inf")]
+INVALID_SERVINGS = [0, -1, True, "2", None, float("nan"), float("inf")]
+VALID_VALUES = {
+    "calories_kcal": 600,
+    "protein_g": 40,
+    "carbohydrates_g": 50,
+    "fat_g": 26,
+}
+PER_SERVING = {
+    "calories_kcal": 300,
+    "protein_g": 20,
+    "carbohydrates_g": 25,
+    "fat_g": 13,
+}
+
+
 @pytest.fixture
 def recipe():
     return {
@@ -17,26 +33,55 @@ def recipe():
         "estimated_cooking_time_minutes": 10,
         "servings": 2,
         "is_breakfast": False,
-        "ingredients": [
-            {
-                "name": "rice",
-                "quantity": "100",
-                "unit": "g",
-            },
-        ],
+        "ingredients": [{"name": "rice", "quantity": "100", "unit": "g"}],
         "seasonings": [],
-        "instructions": [
-            "Cook the rice.",
-        ],
+        "instructions": ["Cook the rice."],
         "nutrition": {
             "basis": "whole_recipe",
             "method": "ai_estimate",
-            "calories_kcal": 600,
-            "protein_g": 40,
-            "carbohydrates_g": 50,
-            "fat_g": 26,
+            **VALID_VALUES,
         },
     }
+
+
+@pytest.fixture
+def prompt():
+    return RecipePromptBuilder().build({})
+
+
+@pytest.fixture
+def nutrition_schema():
+    return RECIPE_RESPONSE_SCHEMA["items"]["properties"]["nutrition"]
+
+
+@pytest.fixture
+def history_path(tmp_path):
+    return str(tmp_path / "recipes_history.json")
+
+
+def render_recipe(recipe, manual_validation=None, warning=None, saved=True):
+    output = []
+    evaluation = SimpleNamespace(
+        manual_validation=manual_validation or [],
+        warning=warning,
+    )
+
+    RecipePresenter(output=output.append).show_recipe(
+        recipe, evaluation, saved=saved
+    )
+
+    return "\n".join(output)
+
+
+def assert_nutrition_unavailable(text):
+    assert "Estimated nutrition: unavailable." in text
+    assert "Estimated nutrition per serving:" not in text
+
+
+def assert_record_unavailable(record):
+    assert record["nutrition_status"] == "unavailable"
+    assert record["nutrition"] is None
+    assert record["nutrition_per_serving"] is None
 
 
 class TestNutritionEstimate:
@@ -49,26 +94,15 @@ class TestNutritionEstimate:
     def test_per_serving_values_are_calculated(self, recipe):
         estimate = NutritionEstimate.from_recipe(recipe)
 
-        assert estimate.per_serving(2) == {
-            "calories_kcal": 300,
-            "protein_g": 20,
-            "carbohydrates_g": 25,
-            "fat_g": 13,
-        }
+        assert estimate.per_serving(2) == PER_SERVING
 
-    @pytest.mark.parametrize(
-        "value",
-        [-1, True, "100", None, float("nan"), float("inf")],
-    )
+    @pytest.mark.parametrize("value", INVALID_NUTRIENT_VALUES)
     def test_invalid_nutrient_values_are_unavailable(self, recipe, value):
         recipe["nutrition"]["protein_g"] = value
 
         assert NutritionEstimate.from_recipe(recipe) is None
 
-    @pytest.mark.parametrize(
-        "servings",
-        [0, -1, True, "2", None, float("nan"), float("inf")],
-    )
+    @pytest.mark.parametrize("servings", INVALID_SERVINGS)
     def test_invalid_servings_are_unavailable(self, recipe, servings):
         estimate = NutritionEstimate.from_recipe(recipe)
 
@@ -86,10 +120,7 @@ class TestNutritionEstimate:
 
     @pytest.mark.parametrize(
         ("field", "value"),
-        [
-            ("basis", "per_serving"),
-            ("method", "verified"),
-        ],
+        [("basis", "per_serving"), ("method", "verified")],
     )
     def test_incorrect_metadata_is_unavailable(self, recipe, field, value):
         recipe["nutrition"][field] = value
@@ -116,22 +147,36 @@ class TestNutritionEstimate:
     def test_non_dictionary_recipe_is_unavailable(self, value):
         assert NutritionEstimate.from_recipe(value) is None
 
-class TestNutritionPrompt:
-    def test_prompt_requests_whole_recipe_nutrition(self):
-        prompt = RecipePromptBuilder().build({})
+    @pytest.mark.parametrize("field", NutritionEstimate.FIELDS)
+    @pytest.mark.parametrize(
+        "value",
+        [*INVALID_NUTRIENT_VALUES, float("-inf"), 10 ** 1000],
+    )
+    def test_direct_construction_rejects_invalid_values(self, field, value):
+        with pytest.raises(ValueError, match=field):
+            NutritionEstimate(**{**VALID_VALUES, field: value})
 
+    def test_direct_construction_accepts_valid_values(self):
+        estimate = NutritionEstimate(**VALID_VALUES)
+
+        assert estimate.per_serving(2) == PER_SERVING
+
+    def test_direct_construction_accepts_zero_values(self):
+        zeros = dict.fromkeys(NutritionEstimate.FIELDS, 0)
+
+        assert NutritionEstimate(**zeros).per_serving(2) == zeros
+
+
+class TestNutritionPrompt:
+    def test_prompt_requests_whole_recipe_nutrition(self, prompt):
         assert "WHOLE recipe" in prompt
         assert "all servings combined, not one serving" in prompt
 
-    def test_prompt_requests_all_nutrition_fields(self):
-        prompt = RecipePromptBuilder().build({})
-
+    def test_prompt_requests_all_nutrition_fields(self, prompt):
         for field in NutritionEstimate.FIELDS:
             assert field in prompt
 
-    def test_prompt_identifies_estimation_method(self):
-        prompt = RecipePromptBuilder().build({})
-
+    def test_prompt_identifies_estimation_method(self, prompt):
         assert "whole_recipe" in prompt
         assert "ai_estimate" in prompt
         assert "not verified nutritional measurements" in prompt
@@ -144,33 +189,27 @@ class TestNutritionSchema:
         assert "nutrition" in recipe_schema["properties"]
         assert "nutrition" in recipe_schema["required"]
 
-    def test_nutrition_schema_requires_numeric_nutrients(self):
-        nutrition_schema = (
-            RECIPE_RESPONSE_SCHEMA["items"]["properties"]["nutrition"]
-        )
-
+    def test_nutrition_schema_requires_numeric_nutrients(
+        self, nutrition_schema
+    ):
         assert nutrition_schema["type"] == "OBJECT"
 
         for field in NutritionEstimate.FIELDS:
             assert field in nutrition_schema["required"]
             assert nutrition_schema["properties"][field]["type"] == "NUMBER"
 
-    def test_nutrition_schema_requires_whole_recipe_basis(self):
-        nutrition_schema = (
-            RECIPE_RESPONSE_SCHEMA["items"]["properties"]["nutrition"]
-        )
-
+    def test_nutrition_schema_requires_whole_recipe_basis(
+        self, nutrition_schema
+    ):
         assert "basis" in nutrition_schema["required"]
         assert nutrition_schema["properties"]["basis"] == {
             "type": "STRING",
             "enum": ["whole_recipe"],
         }
 
-    def test_nutrition_schema_requires_ai_estimate_method(self):
-        nutrition_schema = (
-            RECIPE_RESPONSE_SCHEMA["items"]["properties"]["nutrition"]
-        )
-
+    def test_nutrition_schema_requires_ai_estimate_method(
+        self, nutrition_schema
+    ):
         assert "method" in nutrition_schema["required"]
         assert nutrition_schema["properties"]["method"] == {
             "type": "STRING",
@@ -179,23 +218,8 @@ class TestNutritionSchema:
 
 
 class TestNutritionPresenter:
-    @staticmethod
-    def render_recipe(recipe):
-        output = []
-        presenter = RecipePresenter(output=output.append)
-
-        evaluation = SimpleNamespace(
-            manual_validation=[],
-            warning=None,
-        )
-
-        presenter.show_recipe(recipe, evaluation, saved=True)
-
-        return "\n".join(output)
-
-
     def test_displays_nutrition_per_serving(self, recipe):
-        text = self.render_recipe(recipe)
+        text = render_recipe(recipe)
 
         assert "Estimated nutrition per serving:" in text
         assert "Calories: 300 kcal" in text
@@ -203,109 +227,67 @@ class TestNutritionPresenter:
         assert "Carbohydrates: 25.0 g" in text
         assert "Fat: 13.0 g" in text
 
-
     def test_displays_estimate_label(self, recipe):
-        text = self.render_recipe(recipe)
-
-        assert "Estimated nutrition per serving:" in text
-
+        assert "Estimated nutrition per serving:" in render_recipe(recipe)
 
     def test_missing_nutrition_displays_unavailable(self, recipe):
         del recipe["nutrition"]
 
-        text = self.render_recipe(recipe)
+        text = render_recipe(recipe)
 
-        assert "Estimated nutrition: unavailable." in text
-        assert "Estimated nutrition per serving:" not in text
+        assert_nutrition_unavailable(text)
         assert recipe["recipe_name"] in text
-
 
     def test_missing_nutrient_displays_unavailable(self, recipe):
         del recipe["nutrition"]["protein_g"]
 
-        text = self.render_recipe(recipe)
+        text = render_recipe(recipe)
 
         assert "Estimated nutrition: unavailable." in text
         assert "Calories:" not in text
 
-
-    @pytest.mark.parametrize(
-        "value",
-        [-1, True, "100", None, float("nan"), float("inf")],
-    )
+    @pytest.mark.parametrize("value", INVALID_NUTRIENT_VALUES)
     def test_invalid_nutrition_displays_unavailable(self, recipe, value):
         recipe["nutrition"]["calories_kcal"] = value
 
-        text = self.render_recipe(recipe)
+        assert_nutrition_unavailable(render_recipe(recipe))
 
-        assert "Estimated nutrition: unavailable." in text
-        assert "Estimated nutrition per serving:" not in text
-
-
-    @pytest.mark.parametrize(
-        "servings",
-        [0, -1, True, "2", None, float("nan"), float("inf")],
-    )
+    @pytest.mark.parametrize("servings", INVALID_SERVINGS)
     def test_invalid_servings_displays_unavailable(self, recipe, servings):
         recipe["servings"] = servings
 
-        text = self.render_recipe(recipe)
-
-        assert "Estimated nutrition: unavailable." in text
-        assert "Estimated nutrition per serving:" not in text
-
+        assert_nutrition_unavailable(render_recipe(recipe))
 
     def test_missing_servings_displays_unavailable(self, recipe):
         del recipe["servings"]
 
-        text = self.render_recipe(recipe)
-
-        assert "Estimated nutrition: unavailable." in text
-        assert "Estimated nutrition per serving:" not in text
-
+        assert_nutrition_unavailable(render_recipe(recipe))
 
     def test_nutrition_is_displayed_once_with_manual_validation(self, recipe):
-        output = []
-        presenter = RecipePresenter(output=output.append)
+        manual_validation = [
+            {
+                "ingredient": "special sauce",
+                "exclusions_to_check": ["peanut"],
+                "reason": "The sauce composition needs checking.",
+            },
+            {
+                "ingredient": "signature dressing",
+                "exclusions_to_check": ["peanut"],
+                "reason": "The dressing composition needs checking.",
+            },
+        ]
 
-        evaluation = SimpleNamespace(
-            manual_validation=[
-                {
-                    "ingredient": "special sauce",
-                    "exclusions_to_check": ["peanut"],
-                    "reason": "The sauce composition needs checking.",
-                },
-                {
-                    "ingredient": "signature dressing",
-                    "exclusions_to_check": ["peanut"],
-                    "reason": "The dressing composition needs checking.",
-                },
-            ],
-            warning=None,
-        )
-
-        presenter.show_recipe(recipe, evaluation, saved=True)
-
-        text = "\n".join(output)
+        text = render_recipe(recipe, manual_validation=manual_validation)
 
         assert "Manual validation:" in text
         assert "special sauce: check for peanut" in text
         assert "signature dressing: check for peanut" in text
         assert text.count("Estimated nutrition per serving:") == 1
 
-
     def test_warning_and_save_failure_are_still_displayed(self, recipe):
-        output = []
-        presenter = RecipePresenter(output=output.append)
-
-        evaluation = SimpleNamespace(
-            manual_validation=[],
-            warning="Test recipe warning.",
+        text = render_recipe(
+            recipe, warning="Test recipe warning.", saved=False
         )
-
-        presenter.show_recipe(recipe, evaluation, saved=False)
-
-        text = "\n".join(output)
 
         assert "Estimated nutrition per serving:" in text
         assert "Note: Test recipe warning." in text
@@ -315,18 +297,12 @@ class TestNutritionPresenter:
 class TestNutritionPersistence:
     @staticmethod
     def make_record(recipe):
-        translator = RecipeTranslator()
-
-        return translator.to_record(
+        return RecipeTranslator().to_record(
             record_id=1,
             recipe=recipe,
             req={
                 "ingredients": [
-                    {
-                        "name": "rice",
-                        "quantity": "100",
-                        "unit": "g",
-                    },
+                    {"name": "rice", "quantity": "100", "unit": "g"},
                 ],
             },
             ai_input={
@@ -337,19 +313,12 @@ class TestNutritionPersistence:
             },
         )
 
-
     def test_record_contains_validated_nutrition(self, recipe):
         record = self.make_record(recipe)
 
         assert record["nutrition_status"] == "estimated"
         assert record["nutrition"] == recipe["nutrition"]
-        assert record["nutrition_per_serving"] == {
-            "calories_kcal": 300,
-            "protein_g": 20,
-            "carbohydrates_g": 25,
-            "fat_g": 13,
-        }
-
+        assert record["nutrition_per_serving"] == PER_SERVING
 
     def test_missing_nutrition_is_saved_as_unavailable(self, recipe):
         del recipe["nutrition"]
@@ -357,68 +326,46 @@ class TestNutritionPersistence:
         record = self.make_record(recipe)
 
         assert record["dish_name"] == recipe["recipe_name"]
-        assert record["nutrition_status"] == "unavailable"
-        assert record["nutrition"] is None
-        assert record["nutrition_per_serving"] is None
-
+        assert_record_unavailable(record)
 
     def test_missing_nutrient_is_saved_as_unavailable(self, recipe):
         del recipe["nutrition"]["protein_g"]
 
-        record = self.make_record(recipe)
+        assert_record_unavailable(self.make_record(recipe))
 
-        assert record["nutrition_status"] == "unavailable"
-        assert record["nutrition"] is None
-        assert record["nutrition_per_serving"] is None
-
-
-    @pytest.mark.parametrize(
-        "value",
-        [-1, True, "100", None, float("nan"), float("inf")],
-    )
+    @pytest.mark.parametrize("value", INVALID_NUTRIENT_VALUES)
     def test_invalid_nutrition_does_not_prevent_saving(
-        self, recipe, value, tmp_path
+        self, recipe, value, history_path
     ):
         recipe["nutrition"]["calories_kcal"] = value
 
         record = self.make_record(recipe)
-        path = str(tmp_path / "recipes_history.json")
-        manager = JsonDataManager(file_path=path)
+        manager = JsonDataManager(file_path=history_path)
 
-        assert record["nutrition_status"] == "unavailable"
-        assert record["nutrition"] is None
-        assert record["nutrition_per_serving"] is None
+        assert_record_unavailable(record)
         assert manager.save_record(record) is True
 
-        reloaded = JsonDataManager(file_path=path).load_records()
+        reloaded = JsonDataManager(file_path=history_path).load_records()
 
         assert reloaded == [record]
 
-
-    @pytest.mark.parametrize(
-        "servings",
-        [0, -1, True, "2", None, float("nan"), float("inf")],
-    )
+    @pytest.mark.parametrize("servings", INVALID_SERVINGS)
     def test_invalid_servings_make_nutrition_unavailable(
         self, recipe, servings
     ):
         recipe["servings"] = servings
 
+        assert_record_unavailable(self.make_record(recipe))
+
+    def test_valid_nutrition_survives_save_and_reload(
+        self, recipe, history_path
+    ):
         record = self.make_record(recipe)
-
-        assert record["nutrition_status"] == "unavailable"
-        assert record["nutrition"] is None
-        assert record["nutrition_per_serving"] is None
-
-
-    def test_valid_nutrition_survives_save_and_reload(self, recipe, tmp_path):
-        record = self.make_record(recipe)
-        path = str(tmp_path / "recipes_history.json")
-        manager = JsonDataManager(file_path=path)
+        manager = JsonDataManager(file_path=history_path)
 
         assert manager.save_record(record) is True
 
-        reloaded = JsonDataManager(file_path=path).load_records()
+        reloaded = JsonDataManager(file_path=history_path).load_records()
 
         assert len(reloaded) == 1
         assert reloaded[0]["nutrition"] == record["nutrition"]
@@ -428,10 +375,8 @@ class TestNutritionPersistence:
         )
         assert reloaded[0]["nutrition_status"] == "estimated"
 
-
-    def test_older_record_without_nutrition_can_still_load(self, tmp_path):
-        path = str(tmp_path / "recipes_history.json")
-        manager = JsonDataManager(file_path=path)
+    def test_older_record_without_nutrition_can_still_load(self, history_path):
+        manager = JsonDataManager(file_path=history_path)
 
         old_record = {
             "record_id": 1,
@@ -443,55 +388,28 @@ class TestNutritionPersistence:
 
         assert manager.save_record(old_record) is True
 
-        reloaded = JsonDataManager(file_path=path).load_records()
+        reloaded = JsonDataManager(file_path=history_path).load_records()
 
         assert reloaded == [old_record]
         assert "nutrition" not in reloaded[0]
 
-
     def test_displayed_values_match_saved_values(self, recipe):
         record = self.make_record(recipe)
-        output = []
-        presenter = RecipePresenter(output=output.append)
-
-        evaluation = SimpleNamespace(
-            manual_validation=[],
-            warning=None,
-        )
-
-        presenter.show_recipe(recipe, evaluation, saved=True)
-
-        text = "\n".join(output)
+        text = render_recipe(recipe)
         values = record["nutrition_per_serving"]
 
         assert f"Calories: {values['calories_kcal']:.0f} kcal" in text
         assert f"Protein: {values['protein_g']:.1f} g" in text
-        assert (
-            f"Carbohydrates: {values['carbohydrates_g']:.1f} g"
-            in text
-        )
+        assert f"Carbohydrates: {values['carbohydrates_g']:.1f} g" in text
         assert f"Fat: {values['fat_g']:.1f} g" in text
-
 
     def test_display_labels_estimate_and_record_saves_ai_method(self, recipe):
         record = self.make_record(recipe)
-        output = []
-        presenter = RecipePresenter(output=output.append)
-
-
-        evaluation = SimpleNamespace(
-            manual_validation=[],
-            warning=None,
-        )
-
-
-        presenter.show_recipe(recipe, evaluation, saved=True)
-
-
-        text = "\n".join(output)
-
+        text = render_recipe(recipe)
 
         assert record["nutrition"]["method"] == "ai_estimate"
         assert "Estimated nutrition per serving:" in text
-        assert ("Estimated nutrition based on the recipe's ingredient quantities." in text
+        assert (
+            "Estimated nutrition based on the recipe's ingredient quantities."
+            in text
         )

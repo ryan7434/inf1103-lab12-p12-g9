@@ -32,6 +32,16 @@ class NutritionEstimate:
         "fat_g",
     )
 
+    def __post_init__(self):
+        """Reject invalid nutrition values during direct construction."""
+        for field in self.FIELDS:
+            value = _finite_float(getattr(self, field))
+
+            if value is None or value < 0:
+                raise ValueError(
+                    f"{field} must be a finite, non-negative number."
+                )
+
     @classmethod
     def from_recipe(cls, recipe):
         #return a validated estimate, or none when unavail
