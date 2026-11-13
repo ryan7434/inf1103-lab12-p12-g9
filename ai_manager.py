@@ -3,7 +3,7 @@ import time
 from typing import Any, Callable
 
 from ai_layer import (
-    AIError, AIProvider, AIResponseError, ErrorLogger,
+    AIError, AIProvider, AIResponseError, ErrorLogger, FallbackProvider,
     GeminiProvider, RecipePromptBuilder, RecipeValidator, ResponseParser,
 )
 from ai_layer.recipe_schema import RECIPE_RESPONSE_SCHEMA
@@ -20,7 +20,7 @@ class AiManager:
         self,
         provider: AIProvider,   # the AI to ask (Gemini, or a fake one in tests)
         logger: ErrorLogger,    # where failures get recorded
-        max_attempts: int = 2,  # total tries, including the first one
+        max_attempts: int = 3,  # total tries, including the first one
         sleep: Callable[[float], None] = time.sleep,    # wait function; tests replace it so they run instantly
     ) -> None:
         if max_attempts < 1:
@@ -36,14 +36,26 @@ class AiManager:
 
     # Convenience builder for the normal app setup: real Gemini, API key read
     # from the GEMINI_API_KEY environment variable, errors logged to the default file.
+    # If the main model is busy, the next model in the list is tried (free-tier
+    # limits are per model). Three attempts keeps the number of requests small.
     @classmethod
     def from_environment(cls) -> "AiManager":
-        """Build the default manager: Gemini, key from GEMINI_API_KEY, errors to the log file."""
-        provider = GeminiProvider(
-            api_key=os.environ.get("GEMINI_API_KEY", ""),
-            response_schema=RECIPE_RESPONSE_SCHEMA,
+        """Build the default manager: Gemini (with fallback models), key from GEMINI_API_KEY."""
+        logger = ErrorLogger()
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        models = (GeminiProvider.DEFAULT_MODEL, *GeminiProvider.FALLBACK_MODELS)
+        provider = FallbackProvider(
+            [
+                GeminiProvider(
+                    api_key=api_key,
+                    response_schema=RECIPE_RESPONSE_SCHEMA,
+                    model=model,
+                )
+                for model in models
+            ],
+            logger=logger,
         )
-        return cls(provider=provider, logger=ErrorLogger())
+        return cls(provider=provider, logger=logger, max_attempts=3)
 
     # Main method used by the rest of the app. It never raises an error:
     # on failure it returns an empty list instead.
@@ -81,4 +93,3 @@ class AiManager:
         if not recipes:
             raise AIResponseError("JSON parsed but no recipe passed schema validation.")
         return recipes
-    
