@@ -123,7 +123,10 @@ class RecipeApp:
                 ai_input,
             )
 
-            record["ai_response"] = recipe
+            #save validated nutrition without changing the original recipe.
+            saved_recipe = dict(recipe)
+            saved_recipe["nutrition"] = record["nutrition"]
+            record["ai_response"] = saved_recipe
             record["manual_validation"] = evaluation.manual_validation
             record["validation_state"] = evaluation.validation_state
 

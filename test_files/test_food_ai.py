@@ -231,6 +231,169 @@ class TestRecipeAppFlow(AppTestCase):
             app = RecipeApp.create_default()
         self.assertIsInstance(app, RecipeApp)
 
+    def test_invalid_nutrition_is_unavailable_but_recipe_is_saved(self):
+        invalid_values = (
+            -1,
+            True,
+            "100",
+            None,
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+            10 ** 1000,
+        )
+
+        for index, value in enumerate(invalid_values):
+            with self.subTest(case=index):
+                recipe = make_recipe(name=f"Nutrition fallback {index}")
+                recipe["nutrition"] = {
+                    "basis": "whole_recipe",
+                    "method": "ai_estimate",
+                    "calories_kcal": value,
+                    "protein_g": 40,
+                    "carbohydrates_g": 50,
+                    "fat_g": 26,
+                }
+
+                original_nutrition = recipe["nutrition"]
+                previous_count = len(
+                    JsonDataManager(self.data_path).load_records()
+                )
+
+                ai = ListAiManager([recipe])
+
+                output = self.run_app(
+                    self.make_app(
+                        make_request(),
+                        None,
+                        ai_manager=ai,
+                    )
+                )
+
+                self.assertIn(f"{recipe['recipe_name']} (", output)
+                self.assertIn(
+                    "Estimated nutrition: unavailable.",
+                    output,
+                )
+                self.assertNotIn(
+                    "Estimated nutrition per serving:",
+                    output,
+                )
+                self.assertNotIn("could not save this recipe", output)
+
+                records = JsonDataManager(self.data_path).load_records()
+
+                self.assertEqual(len(records), previous_count + 1)
+
+                record = records[-1]
+
+                self.assertEqual(record["dish_name"], recipe["recipe_name"])
+                self.assertEqual(
+                    record["nutrition_status"],
+                    "unavailable",
+                )
+                self.assertIsNone(record["nutrition"])
+                self.assertIsNone(record["nutrition_per_serving"])
+                self.assertIsNone(record["ai_response"]["nutrition"])
+
+                self.assertEqual(
+                    record["ai_response"]["ingredients"],
+                    recipe["ingredients"],
+                )
+                self.assertEqual(
+                    record["ai_response"]["instructions"],
+                    recipe["instructions"],
+                )
+
+                self.assertIs(recipe["nutrition"], original_nutrition)
+                self.assertIs(
+                    recipe["nutrition"]["calories_kcal"],
+                    value,
+                )
+
+
+    def test_valid_nutrition_is_displayed_saved_and_reloaded(self):
+        recipe = make_recipe(name="Nutrition omelette")
+        recipe["nutrition"] = {
+            "basis": "whole_recipe",
+            "method": "ai_estimate",
+            "calories_kcal": 600,
+            "protein_g": 40,
+            "carbohydrates_g": 50,
+            "fat_g": 26,
+        }
+
+        output = self.run_app(
+            self.make_app(
+                make_request(),
+                [recipe],
+            )
+        )
+
+        self.assertIn("Nutrition omelette (", output)
+        self.assertIn("Estimated nutrition per serving:", output)
+        self.assertIn("Calories: 300 kcal", output)
+        self.assertIn("Protein: 20.0 g", output)
+        self.assertIn("Carbohydrates: 25.0 g", output)
+        self.assertIn("Fat: 13.0 g", output)
+        self.assertIn(
+            "Estimated nutrition based on the recipe's ingredient quantities.",
+            output,
+        )
+        self.assertNotIn("could not save this recipe", output)
+
+        records = JsonDataManager(self.data_path).load_records()
+
+        self.assertEqual(len(records), 1)
+
+        record = records[0]
+
+        self.assertEqual(record["nutrition_status"], "estimated")
+        self.assertEqual(record["nutrition"], recipe["nutrition"])
+        self.assertEqual(
+            record["nutrition_per_serving"],
+            {
+                "calories_kcal": 300,
+                "protein_g": 20,
+                "carbohydrates_g": 25,
+                "fat_g": 13,
+            },
+        )
+        self.assertEqual(
+            record["ai_response"]["nutrition"],
+            record["nutrition"],
+        )
+
+
+    def test_missing_nutrition_does_not_prevent_application_save(self):
+        recipe = make_recipe(name="No nutrition omelette")
+        ai = ListAiManager([recipe])
+
+        output = self.run_app(
+            self.make_app(
+                make_request(),
+                None,
+                ai_manager=ai,
+            )
+        )
+
+        self.assertIn("No nutrition omelette (", output)
+        self.assertIn("Estimated nutrition: unavailable.", output)
+        self.assertNotIn("could not save this recipe", output)
+
+        records = JsonDataManager(self.data_path).load_records()
+
+        self.assertEqual(len(records), 1)
+
+        record = records[0]
+
+        self.assertEqual(record["nutrition_status"], "unavailable")
+        self.assertIsNone(record["nutrition"])
+        self.assertIsNone(record["nutrition_per_serving"])
+        self.assertIsNone(record["ai_response"]["nutrition"])
+
+        self.assertNotIn("nutrition", recipe)
+
 class TestRecipeTranslator(unittest.TestCase):
     def setUp(self):
         self.translator = RecipeTranslator()
