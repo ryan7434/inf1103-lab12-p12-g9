@@ -1,5 +1,8 @@
 name: tests
 
+# CI: every branch push and every pull request into main runs the tests.
+# CD: pushing a version tag such as v1.0.0 runs the tests again and, only if they
+#     pass, builds the Docker image and publishes it to GitHub Container Registry.
 on:
   push:
     branches: ["**"]
@@ -9,7 +12,6 @@ on:
 
 permissions:
   contents: read
-
 
 jobs:
   test:
@@ -22,7 +24,15 @@ jobs:
           python-version: "3.11"
 
       - name: Run unit tests
-        run: python -m unittest discover -p "test_*.py" -v  #finds every file starting with test_ and runs all the tests in it
+        run: python -m unittest discover -p "test_*.py" -v
+
+      # Only runs while the old pytest-style file still exists.
+      # Once it is renamed to test_logic_manager.py (unittest style), the step above covers it.
+      - name: Run logic manager tests (pytest style)
+        if: hashFiles('logic_manager_testing.py') != ''
+        run: |
+          pip install pytest
+          python -m pytest -q logic_manager_testing.py
 
       - name: Build Docker image
         run: docker build -t inf1103-p12-g9 .
@@ -30,9 +40,8 @@ jobs:
       - name: Run the tests inside Docker, offline
         run: docker run --rm --network none inf1103-p12-g9 python -m unittest discover -p "test_*.py" -v
 
-      
   publish:
-    # Runs only after the tests pass, and only when a version tag such as v1.0.0 is pushed.
+    # Release: runs only for version tags, and only after the test job has passed.
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -49,32 +58,35 @@ jobs:
             exit 1
           fi
 
-
-      - name: Set image name and version (v1.0.0 -> 1.0.0)
+      - name: Set image name and version
         run: |
           echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/inf1103-p12-g9" >> "$GITHUB_ENV"
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-
-      - name: Run the tests inside the release image, offline
-        run: docker run --rm --network none "$IMAGE:$VERSION" python -m unittest discover -p "test_*.py" -v
- 
-      - name: Check that no API key is baked into the image
-        run: |
-          if docker run --rm "$IMAGE:$VERSION" env | grep -q "GEMINI_API_KEY"; then
-            echo "GEMINI_API_KEY is set inside the image. Remove it from the Dockerfile."
-            exit 1
-          fi
 
       - name: Build image
         run: |
           docker build \
             --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
-            -t "$IMAGE:$VERSION" -t "$IMAGE:latest" .
+            --label "org.opencontainers.image.version=$VERSION" \
+            -t release-candidate .
+          docker image ls release-candidate
+
+      - name: Run the tests inside the release image, offline
+        run: docker run --rm --network none release-candidate python -m unittest discover -p "test_*.py" -v
+
+      - name: Check that no API key is baked into the image
+        run: |
+          if docker run --rm release-candidate env | grep -q "GEMINI_API_KEY"; then
+            echo "GEMINI_API_KEY is set inside the image. Remove it from the Dockerfile."
+            exit 1
+          fi
 
       - name: Log in to GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Push image (version and latest)
+      - name: Push versioned image and latest
         run: |
+          docker tag release-candidate "$IMAGE:$VERSION"
+          docker tag release-candidate "$IMAGE:latest"
           docker push "$IMAGE:$VERSION"
           docker push "$IMAGE:latest"
