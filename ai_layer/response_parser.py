@@ -2,33 +2,48 @@ import json
 
 from .ai_response_error import AIResponseError
 
-# Converts the AI's raw text reply into Python data (a list of dicts).
+
 class ResponseParser:
-    """Turns the provider's raw text into a list of dicts, or raises AIResponseError."""
+    """Turn provider text into a list, or raise AIResponseError."""
+
+    # Application policy: characters, not bytes.
+    MAX_RESPONSE_CHARACTERS = 200_000
+    MAX_DIAGNOSTIC_CHARACTERS = 200
+    MAX_PREVIEW_CHARACTERS = 200
 
     def parse(self, raw_text: str) -> list:
-        # An empty or whitespace-only reply is unusable.
-        if not raw_text or not raw_text.strip():
+        if not isinstance(raw_text, str):
+            raise AIResponseError("AI response must be a string.")
+
+        # Check before stripping fences or attempting JSON decoding.
+        if len(raw_text) > self.MAX_RESPONSE_CHARACTERS:
+            raise AIResponseError(
+                "AI response exceeded the "
+                f"{self.MAX_RESPONSE_CHARACTERS}-character limit."
+            )
+
+        if not raw_text.strip():
             raise AIResponseError("AI response was empty.")
-        # Remove ```json ... ``` wrapping if the AI added it.
         cleaned = self._strip_markdown_fence(raw_text.strip())
         try:
             parsed = json.loads(cleaned)
-        except json.JSONDecodeError as error:
-             # Include the first 200 characters so the log shows what went wrong.
+        except (ValueError, RecursionError) as error:
+            diagnostic = str(error)[:self.MAX_DIAGNOSTIC_CHARACTERS]
+            preview = cleaned[:self.MAX_PREVIEW_CHARACTERS]
             raise AIResponseError(
-                f"JSON decode failed: {error} | raw (first 200 chars): {cleaned[:200]}"
+                f"JSON decode failed: {diagnostic} "
+                f"| raw preview: {preview}"
             ) from error
-        # If the AI returned one recipe instead of a list, wrap it in a list.
+
+        # Preserve support for a single recipe object.
         if isinstance(parsed, dict):
             parsed = [parsed]
-        # Anything else (a number, a string...) is not a recipe list.
         if not isinstance(parsed, list):
-            raise AIResponseError("Parsed AI response was neither a list nor a dict.")
+            raise AIResponseError(
+                "Parsed AI response was neither a list nor a dict."
+            )
         return parsed
 
-    # Some models wrap JSON in a markdown code block. This removes the
-    # ``` marks and the optional "json" label so json.loads() can read it.
     @staticmethod
     def _strip_markdown_fence(text: str) -> str:
         if text.startswith("```"):

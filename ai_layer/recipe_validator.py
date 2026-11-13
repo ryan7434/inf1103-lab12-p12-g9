@@ -1,14 +1,13 @@
+import math
 from typing import Any
-
 from .response_validator import ResponseValidator
 
-# Checks that one recipe from the AI has all the fields, with the right types
-# and no empty values. It checks structure only, not whether the recipe is
-# suitable for the user (that is the logic layer's job).
+# Checks recipe structure and core numeric values.
+# Suitability for the user remains the logic layer's responsibility.
 class RecipeValidator(ResponseValidator):
-    """Structural check for one recipe dict (fields, types, non-empty values)."""
+    """Validate recipe fields, ingredient structure and core numbers."""
 
-    # Every recipe must contain these fields, each with the listed Python type.
+# Every recipe must contain these fields, each with the listed Python type.
     REQUIRED_FIELDS = {
         "recipe_name": str,
         "ingredients": list,
@@ -19,7 +18,8 @@ class RecipeValidator(ResponseValidator):
         "servings": (int, float),
         "is_breakfast": bool,
     }
-    # Every ingredient inside a recipe must have these three text fields.
+
+    # Every ingredient inside a recipe must have these three text fields
     INGREDIENT_FIELDS = ("name", "quantity", "unit")
 
     # A recipe is valid only if ALL of these checks pass.
@@ -27,28 +27,45 @@ class RecipeValidator(ResponseValidator):
         return (
             isinstance(recipe, dict)
             and self._has_required_fields(recipe)
+            and self._is_finite_number(
+                recipe["estimated_cooking_time_minutes"])
+            and recipe["estimated_cooking_time_minutes"] >= 0
+            and self._is_finite_number(recipe["servings"])
+            and recipe["servings"] > 0
             and self._ingredients_are_valid(recipe["ingredients"])
-            and self._text_items_are_valid(recipe["instructions"], allow_empty_list=False)
-            and self._text_items_are_valid(recipe["seasonings"], allow_empty_list=True)
+            and self._text_items_are_valid(
+                recipe["instructions"], allow_empty_list=False
+            )
+            and self._text_items_are_valid(
+                recipe["seasonings"], allow_empty_list=True
+            )
         )
-
-     # Check that each required field exists and has the correct type.
+    
     def _has_required_fields(self, recipe: dict) -> bool:
         for field, expected in self.REQUIRED_FIELDS.items():
             if field not in recipe:
                 return False
-            # Turn a single type into a tuple so isinstance() can handle both cases.
-            expected_types = expected if isinstance(expected, tuple) else (expected,)
+            expected_types = (
+                expected if isinstance(expected, tuple) else (expected,)
+            )
             value = recipe[field]
-            # bool is a subclass of int, so True would otherwise pass as a number
+            # Reject booleans where a numeric value is expected.
             if isinstance(value, bool) and bool not in expected_types:
                 return False
             if not isinstance(value, expected_types):
                 return False
         return True
 
-    # The ingredient list must not be empty, and every ingredient needs
-    # a non-blank name, quantity and unit (all strings).
+    @staticmethod
+    def _is_finite_number(value: Any) -> bool:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return False
+
+        try:
+            return math.isfinite(float(value))
+        except (OverflowError, ValueError):
+            return False
+
     def _ingredients_are_valid(self, ingredients: list) -> bool:
         if not ingredients:
             return False
@@ -61,11 +78,13 @@ class RecipeValidator(ResponseValidator):
                     return False
         return True
 
-    # Used for instructions and seasonings: every item must be a non-blank string.
-    # allow_empty_list decides whether an empty list is acceptable
-    # (instructions: no, seasonings: yes).
     @staticmethod
-    def _text_items_are_valid(items: list, allow_empty_list: bool) -> bool:
+    def _text_items_are_valid(
+        items: list, allow_empty_list: bool
+    ) -> bool:
         if not items:
             return allow_empty_list
-        return all(isinstance(item, str) and item.strip() for item in items)
+        return all(
+            isinstance(item, str) and item.strip()
+            for item in items
+        )

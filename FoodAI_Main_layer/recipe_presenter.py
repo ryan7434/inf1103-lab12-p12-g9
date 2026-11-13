@@ -1,4 +1,5 @@
 from ai_layer.nutrition_estimate import NutritionEstimate
+from terminal_text import TerminalText
 
 
 class RecipePresenter:
@@ -109,17 +110,5 @@ class RecipePresenter:
         )
 
     def _safe_output(self, message):
-        #escape terminal controls while preserving newlines and tabs
-        text = str(message)
-
-        safe_text = "".join(
-            f"\\x{ord(character):02x}"
-            if (
-                ord(character) < 32
-                and character not in ("\n", "\t")
-            ) or 127 <= ord(character) <= 159
-            else character
-            for character in text
-        )
-
-        self._raw_output(safe_text)
+        # Escape terminal controls while preserving newlines and tabs.
+        self._raw_output(TerminalText.escape(message))
