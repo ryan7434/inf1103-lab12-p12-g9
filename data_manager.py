@@ -90,7 +90,13 @@ class JsonDataManager(BaseDataManager):
                     temporary_file.flush()
                     os.fsync(temporary_file.fileno())
 
-                os.replace(temporary_path, self._file_path)
+                try:
+                    os.replace(temporary_path, self._file_path)
+                except OSError:
+                    # A file mounted into a Docker container cannot be swapped
+                    # for another one ("Device or resource busy"), so write the
+                    # new content over the existing file instead.
+                    self._write_in_place(output)
                 return True
             finally:
                 if temporary_path is not None:
@@ -102,6 +108,17 @@ class JsonDataManager(BaseDataManager):
                         pass
         except (OSError, TypeError, ValueError):
             return False
+
+    def _write_in_place(self, output: str) -> None:
+        """Fallback save: overwrite the history file directly.
+
+        The text is already fully built, so a failure while building it can
+        never reach this point and truncate the existing history.
+        """
+        with open(self._file_path, mode="w", encoding="utf-8") as f:
+            f.write(output)
+            f.flush()
+            os.fsync(f.fileno())
 
     def load_records(self) -> list:
         """Loads all saved recipe records into memory on system startup or query."""
