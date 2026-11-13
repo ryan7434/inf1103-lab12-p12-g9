@@ -60,6 +60,7 @@ class TestAIErrorHierarchy(unittest.TestCase):
             ai.AIConfigurationError,
             ai.AITransportError,
             ai.AIRateLimitError,
+            ai.AIOverloadedError,
             ai.AIResponseError,
         ):
             with self.subTest(error_class=error_class.__name__):
@@ -70,6 +71,22 @@ class TestAIErrorHierarchy(unittest.TestCase):
             ai.AIRateLimitError.retry_delay_seconds,
             ai.AITransportError.retry_delay_seconds,
         )
+
+    def test_overloaded_waits_longer_than_other_errors(self):
+        self.assertEqual(ai.AIOverloadedError.retry_delay_seconds, 10)
+        self.assertGreater(
+            ai.AIOverloadedError.retry_delay_seconds,
+            ai.AITransportError.retry_delay_seconds,
+        )
+
+    def test_overloaded_is_retryable(self):
+        self.assertTrue(ai.AIOverloadedError.retryable)
+
+    def test_overloaded_can_be_handled_as_a_transport_error(self):
+        # Liskov: code written for AITransportError also works for its subclass
+        self.assertTrue(issubclass(ai.AIOverloadedError, ai.AITransportError))
+        with self.assertRaises(ai.AITransportError):
+            raise ai.AIOverloadedError("busy")
 
     def test_configuration_error_is_not_retryable(self):
         self.assertFalse(ai.AIConfigurationError.retryable)
@@ -154,6 +171,26 @@ class TestGeminiProvider(unittest.TestCase):
         with mock.patch("urllib.request.urlopen", side_effect=error):
             with self.assertRaises(ai.AIRateLimitError):
                 make_gemini().generate("hi")
+
+    def test_http_503_becomes_an_overloaded_error(self):
+        error = urllib.error.HTTPError("http://x", 503, "Service Unavailable", {}, io.BytesIO(b"{}"))
+        with mock.patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(ai.AIOverloadedError):
+                make_gemini().generate("hi")
+
+    def test_only_429_and_503_get_their_own_error_types(self):
+        for code in (400, 500, 502):
+            with self.subTest(code=code):
+                error = urllib.error.HTTPError("http://x", code, "Error", {}, io.BytesIO(b"{}"))
+                with mock.patch("urllib.request.urlopen", side_effect=error):
+                    with self.assertRaises(ai.AITransportError) as caught:
+                        make_gemini().generate("hi")
+                self.assertNotIsInstance(caught.exception, ai.AIOverloadedError)
+                self.assertNotIsInstance(caught.exception, ai.AIRateLimitError)
+
+    def test_default_and_fallback_models_are_configured(self):
+        self.assertEqual(ai.GeminiProvider.DEFAULT_MODEL, "gemini-3.8-flash")
+        self.assertEqual(ai.GeminiProvider.FALLBACK_MODELS, ("gemini-3.6-flash",))
 
     def test_other_http_errors_become_transport_errors_with_the_body(self):
         error = urllib.error.HTTPError(
@@ -456,6 +493,7 @@ class TestAiManagerGenerateRecipes(ManagerTestCase):
             ai.AIConfigurationError("a"),
             ai.AITransportError("b"),
             ai.AIRateLimitError("c"),
+            ai.AIOverloadedError("e"),
             ai.AIResponseError("d"),
         ):
             with self.subTest(error=type(error).__name__):
@@ -477,6 +515,103 @@ class TestAiManagerGenerateRecipes(ManagerTestCase):
         manager, _ = self.make_manager(["[]"])
         self.assertTrue(manager.is_valid_recipe(good_recipe()))
         self.assertFalse(manager.is_valid_recipe({"recipe_name": "incomplete"}))
+
+
+class TestAiManagerOverload(ManagerTestCase):
+    """A busy model (HTTP 503) is retried with a longer wait."""
+
+    def test_retries_after_overload_and_waits_ten_seconds(self):
+        manager, stub = self.make_manager(
+            [ai.AIOverloadedError("busy"), ai.AIOverloadedError("busy"), json.dumps([good_recipe()])],
+            max_attempts=3,
+        )
+        self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [good_recipe()])
+        self.assertEqual(len(stub.prompts), 3)
+        self.assertEqual(self.sleeps, [ai.AIOverloadedError.retry_delay_seconds] * 2)
+
+    def test_gives_up_with_an_empty_list_when_always_overloaded(self):
+        manager, stub = self.make_manager([ai.AIOverloadedError("busy")], max_attempts=3)
+        self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [])
+        self.assertEqual(len(stub.prompts), 3)
+        self.assertIn("All retries exhausted", self.log_text())
+
+
+class RecordingLogger:
+    def __init__(self):
+        self.messages = []
+
+    def log(self, message):
+        self.messages.append(message)
+
+
+class TestFallbackProvider(ManagerTestCase):
+    def test_needs_at_least_one_provider(self):
+        with self.assertRaises(ValueError):
+            ai.FallbackProvider([])
+
+    def test_is_an_ai_provider(self):
+        # Liskov: the manager can use it anywhere it uses a single provider
+        self.assertIsInstance(ai.FallbackProvider([StubProvider(["x"])]), ai.AIProvider)
+
+    def test_uses_the_first_provider_when_it_works(self):
+        first, second = StubProvider(["first reply"]), StubProvider(["second reply"])
+        self.assertEqual(ai.FallbackProvider([first, second]).generate("p"), "first reply")
+        self.assertEqual((len(first.prompts), len(second.prompts)), (1, 0))
+
+    def test_switches_to_the_next_provider_when_overloaded(self):
+        first = StubProvider([ai.AIOverloadedError("busy")])
+        second = StubProvider(["second reply"])
+        self.assertEqual(ai.FallbackProvider([first, second]).generate("p"), "second reply")
+        self.assertEqual((len(first.prompts), len(second.prompts)), (1, 1))
+
+    def test_switches_to_the_next_provider_on_a_rate_limit(self):
+        first = StubProvider([ai.AIRateLimitError("limit")])
+        second = StubProvider(["second reply"])
+        self.assertEqual(ai.FallbackProvider([first, second]).generate("p"), "second reply")
+
+    def test_tries_providers_in_order(self):
+        providers = [
+            StubProvider([ai.AIOverloadedError("busy")]),
+            StubProvider([ai.AIOverloadedError("busy")]),
+            StubProvider(["third reply"]),
+        ]
+        self.assertEqual(ai.FallbackProvider(providers).generate("p"), "third reply")
+        self.assertEqual([len(p.prompts) for p in providers], [1, 1, 1])
+
+    def test_raises_the_last_error_when_every_provider_is_busy(self):
+        first = StubProvider([ai.AIOverloadedError("first busy")])
+        second = StubProvider([ai.AIRateLimitError("second limit")])
+        with self.assertRaises(ai.AIRateLimitError) as caught:
+            ai.FallbackProvider([first, second]).generate("p")
+        self.assertIn("second limit", str(caught.exception))
+
+    def test_does_not_switch_on_errors_another_model_cannot_fix(self):
+        for error in (
+            ai.AIConfigurationError("no key"),
+            ai.AIResponseError("bad reply"),
+            ai.AITransportError("network down"),
+        ):
+            with self.subTest(error=type(error).__name__):
+                first, second = StubProvider([error]), StubProvider(["never used"])
+                with self.assertRaises(type(error)):
+                    ai.FallbackProvider([first, second]).generate("p")
+                self.assertEqual(len(second.prompts), 0)
+
+    def test_logs_each_switch_but_not_the_final_failure(self):
+        logger = RecordingLogger()
+        providers = [StubProvider([ai.AIOverloadedError("busy")]) for _ in range(2)]
+        with self.assertRaises(ai.AIOverloadedError):
+            ai.FallbackProvider(providers, logger=logger).generate("p")
+        self.assertEqual(len(logger.messages), 1)
+        self.assertIn("trying the next one", logger.messages[0])
+
+    def test_backup_model_answers_through_the_manager_without_any_waiting(self):
+        provider = ai.FallbackProvider(
+            [StubProvider([ai.AIOverloadedError("busy")]), StubProvider([json.dumps([good_recipe()])])]
+        )
+        manager = AiManager(provider, ai.ErrorLogger(log_file=self.log_path), sleep=self.sleeps.append)
+        self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [good_recipe()])
+        self.assertEqual(self.sleeps, [])
 
 
 class TestAiManagerDesign(ManagerTestCase):
@@ -526,6 +661,17 @@ class TestAiManagerDesign(ManagerTestCase):
             manager = AiManager.from_environment()
             self.assertEqual(manager.generate_recipes(SAMPLE_REQUEST), [])
         urlopen.assert_not_called()
+
+    def test_from_environment_tries_the_models_in_order_with_three_attempts(self):
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "env-key"}, clear=True):
+            manager = AiManager.from_environment()
+        provider = manager._provider
+        self.assertIsInstance(provider, ai.FallbackProvider)
+        self.assertEqual(
+            [p.model for p in provider.providers],
+            [ai.GeminiProvider.DEFAULT_MODEL, *ai.GeminiProvider.FALLBACK_MODELS],
+        )
+        self.assertEqual(manager._max_attempts, 3)
 
     def test_from_environment_sends_the_key_from_the_environment(self):
         body = gemini_body(json.dumps([good_recipe()]))

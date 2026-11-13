@@ -701,7 +701,39 @@ class TestJsonDataManager(unittest.TestCase):
             [quick, boundary],
         )
 
-    def test_failed_replacement_preserves_existing_history(self):
+    def test_refused_replacement_falls_back_to_writing_in_place(self):
+        # Docker cannot replace a single mounted file ("Device or resource
+        # busy"), so the new record must still be saved by writing over it.
+        manager = JsonDataManager(str(self.path))
+        self.assertTrue(manager.save_record({"record_id": 1}))
+
+        with mock.patch(
+            "data_manager.os.replace",
+            side_effect=PermissionError("Replacement denied"),
+        ):
+            saved = manager.save_record({"record_id": 2})
+
+        self.assertTrue(saved)
+        self.assertEqual(
+            manager.load_records(),
+            [{"record_id": 1}, {"record_id": 2}],
+        )
+        self.assertEqual(
+            list(self.path.parent.glob(".recipes-history-*.tmp")),
+            [],
+        )
+
+    def test_normal_save_does_not_use_the_in_place_fallback(self):
+        manager = JsonDataManager(str(self.path))
+
+        with mock.patch.object(
+            JsonDataManager, "_write_in_place"
+        ) as fallback:
+            self.assertTrue(manager.save_record({"record_id": 1}))
+
+        fallback.assert_not_called()
+
+    def test_failed_replacement_and_fallback_preserve_existing_history(self):
         manager = JsonDataManager(str(self.path))
         self.assertTrue(manager.save_record({"record_id": 1}))
 
@@ -710,6 +742,10 @@ class TestJsonDataManager(unittest.TestCase):
         with mock.patch(
             "data_manager.os.replace",
             side_effect=PermissionError("Replacement denied"),
+        ), mock.patch.object(
+            JsonDataManager,
+            "_write_in_place",
+            side_effect=OSError("Read-only file system"),
         ):
             saved = manager.save_record({"record_id": 2})
 
