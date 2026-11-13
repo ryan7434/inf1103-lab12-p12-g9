@@ -2,8 +2,14 @@ name: tests
 
 on:
   push:
+    branches: ["**"]
+    tags: ["v*.*.*"]
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
+
 
 jobs:
   test:
@@ -15,8 +21,60 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install test dependencies
-        run: python -m pip install pytest
-
       - name: Run unit tests
-        run: python -m unittest discover -s test_files -t . -p "test_*.py" -v  #finds every file starting with test_ and runs all the tests in it
+        run: python -m unittest discover -p "test_*.py" -v  #finds every file starting with test_ and runs all the tests in it
+
+      - name: Build Docker image
+        run: docker build -t inf1103-p12-g9 .
+
+      - name: Run the tests inside Docker, offline
+        run: docker run --rm --network none inf1103-p12-g9 python -m unittest discover -p "test_*.py" -v
+
+      
+  publish:
+    # Runs only after the tests pass, and only when a version tag such as v1.0.0 is pushed.
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag looks like vMAJOR.MINOR.PATCH
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag '$GITHUB_REF_NAME' is not in the form v1.2.3. Nothing will be published."
+            exit 1
+          fi
+
+
+      - name: Set image name and version (v1.0.0 -> 1.0.0)
+        run: |
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/inf1103-p12-g9" >> "$GITHUB_ENV"
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Run the tests inside the release image, offline
+        run: docker run --rm --network none "$IMAGE:$VERSION" python -m unittest discover -p "test_*.py" -v
+ 
+      - name: Check that no API key is baked into the image
+        run: |
+          if docker run --rm "$IMAGE:$VERSION" env | grep -q "GEMINI_API_KEY"; then
+            echo "GEMINI_API_KEY is set inside the image. Remove it from the Dockerfile."
+            exit 1
+          fi
+
+      - name: Build image
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            -t "$IMAGE:$VERSION" -t "$IMAGE:latest" .
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push image (version and latest)
+        run: |
+          docker push "$IMAGE:$VERSION"
+          docker push "$IMAGE:latest"
