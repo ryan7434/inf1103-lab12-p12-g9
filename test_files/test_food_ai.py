@@ -452,6 +452,30 @@ class TestRecipePresenter(unittest.TestCase):
         self.assertEqual(lines[0], "hello")
         self.assertIn("2 of 5 generated recipe(s) passed validation", lines[1])
 
+    def test_terminal_control_characters_are_escaped(self):
+        lines = []
+        presenter = RecipePresenter(output=lines.append)
+
+        presenter.show_message(
+            "Recipe\x1b[2J\rhidden\b\x9b31m"
+        )
+
+        self.assertEqual(
+            lines,
+            ["Recipe\\x1b[2J\\x0dhidden\\x08\\x9b31m"],
+        )
+
+
+    def test_normal_text_newlines_and_tabs_are_preserved(self):
+        lines = []
+        presenter = RecipePresenter(output=lines.append)
+
+        message = "Chicken sauté\n\tProtein: 20 g"
+
+        presenter.show_message(message)
+
+        self.assertEqual(lines, [message])
+
 class TestNoProceduralCodeRemains(unittest.TestCase):
     def test_no_module_in_the_package_defines_standalone_functions(self):
         functions = []
@@ -675,6 +699,69 @@ class TestJsonDataManager(unittest.TestCase):
         self.assertEqual(
             manager.query_by_max_time(30),
             [quick, boundary],
+        )
+
+    def test_failed_replacement_preserves_existing_history(self):
+        manager = JsonDataManager(str(self.path))
+        self.assertTrue(manager.save_record({"record_id": 1}))
+
+        original = self.read_history()
+
+        with mock.patch(
+            "data_manager.os.replace",
+            side_effect=PermissionError("Replacement denied"),
+        ):
+            saved = manager.save_record({"record_id": 2})
+
+        self.assertFalse(saved)
+        self.assertEqual(self.read_history(), original)
+        self.assertEqual(
+            manager.load_records(),
+            [{"record_id": 1}],
+        )
+        self.assertEqual(
+            list(self.path.parent.glob(".recipes-history-*.tmp")),
+            [],
+        )
+
+
+    def test_failed_temporary_write_preserves_existing_history(self):
+        manager = JsonDataManager(str(self.path))
+        self.assertTrue(manager.save_record({"record_id": 1}))
+
+        original = self.read_history()
+
+        with mock.patch(
+            "data_manager.os.fsync",
+            side_effect=OSError("Disk synchronization failed"),
+        ):
+            saved = manager.save_record({"record_id": 2})
+
+        self.assertFalse(saved)
+        self.assertEqual(self.read_history(), original)
+        self.assertEqual(
+            manager.load_records(),
+            [{"record_id": 1}],
+        )
+        self.assertEqual(
+            list(self.path.parent.glob(".recipes-history-*.tmp")),
+            [],
+        )
+
+
+    def test_successful_save_leaves_no_temporary_files(self):
+        manager = JsonDataManager(str(self.path))
+
+        self.assertTrue(manager.save_record({"record_id": 1}))
+        self.assertTrue(manager.save_record({"record_id": 2}))
+
+        self.assertEqual(
+            manager.load_records(),
+            [{"record_id": 1}, {"record_id": 2}],
+        )
+        self.assertEqual(
+            list(self.path.parent.glob(".recipes-history-*.tmp")),
+            [],
         )
 
 class TestManualValidationTranslator(unittest.TestCase):

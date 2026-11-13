@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import json
 import os
+import tempfile
 
 
 class BaseDataManager(ABC):
@@ -71,9 +72,34 @@ class JsonDataManager(BaseDataManager):
                 allow_nan=False,
             )
 
-            with open(self._file_path, "w", encoding="utf-8") as f:
-                f.write(output)
-            return True
+            #write separately before replacing the existing history.
+            directory = os.path.dirname(os.path.abspath(self._file_path))
+            temporary_path = None
+
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    dir=directory,
+                    prefix=".recipes-history-",
+                    suffix=".tmp",
+                    delete=False,
+                ) as temporary_file:
+                    temporary_path = temporary_file.name
+                    temporary_file.write(output)
+                    temporary_file.flush()
+                    os.fsync(temporary_file.fileno())
+
+                os.replace(temporary_path, self._file_path)
+                return True
+            finally:
+                if temporary_path is not None:
+                    try:
+                        os.unlink(temporary_path)
+                    except FileNotFoundError:
+                        pass
+                    except OSError:
+                        pass
         except (OSError, TypeError, ValueError):
             return False
 

@@ -5,7 +5,8 @@ class RecipePresenter:
     """Prints recipes to the console. Only knows how to display."""
 
     def __init__(self, output=print):
-        self._output = output
+        self._raw_output = output
+        self._output = self._safe_output
 
     def show_message(self, message):
         self._output(message)
@@ -106,3 +107,19 @@ class RecipePresenter:
         self._output(
             "Estimated nutrition based on the recipe's ingredient quantities."
         )
+
+    def _safe_output(self, message):
+        #escape terminal controls while preserving newlines and tabs
+        text = str(message)
+
+        safe_text = "".join(
+            f"\\x{ord(character):02x}"
+            if (
+                ord(character) < 32
+                and character not in ("\n", "\t")
+            ) or 127 <= ord(character) <= 159
+            else character
+            for character in text
+        )
+
+        self._raw_output(safe_text)
