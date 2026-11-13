@@ -1,56 +1,88 @@
+# The name shown in the Actions tab on GitHub.
 name: tests
 
 # CI: every branch push and every pull request into main runs the tests.
 # CD: pushing a version tag such as v1.0.0 runs the tests again and, only if they
 #     pass, builds the Docker image and publishes it to GitHub Container Registry.
+#     The version tag must be in the form vMAJOR.MINOR.PATCH, e.g. v1.0.0.
+
+#git tag -a v1.0.0 -m "First release"    -> to add verion tag to the current commit
+#git push origin v1.0.0
+
+#git tag -d v1.0.0    -> to delete this veriosn tag
+#git push origin :refs/tags/v1.0.0
+
+# --- WHEN does this workflow run? -------------------------------------------
 on:
   push:
+    # Run on a push to ANY branch (the "**" means every branch name).
     branches: ["**"]
+    # Also run when we push a version tag like v1.0.0 or v2.3.1.
+    # This is what starts a release.
     tags: ["v*.*.*"]
   pull_request:
+    # Run on every pull request that targets main, so a change is tested
+    # before it is merged.
     branches: [main]
 
+# --- WHAT is the workflow allowed to do? ------------------------------------
+# By default it may only read the repository's code (least privilege).
+# The publish job below asks for extra permission for itself only.
 permissions:
   contents: read
 
 jobs:
+  # ==========================================================================
+  # JOB 1: test
+  # Runs on every push and pull request. Must pass before anything is published.
+  # ==========================================================================
   test:
+    # Use a fresh Ubuntu virtual machine provided by GitHub.
     runs-on: ubuntu-latest
     steps:
+      # Download our repository's code onto the virtual machine.
       - uses: actions/checkout@v4
 
+      # Install Python 3.11 (the same version our Docker image uses).
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # Find and run every file named test_*.py using Python's built-in
+      # unittest. "-v" prints each test name. The job fails if any test fails.
       - name: Run unit tests
         run: python -m unittest discover -p "test_*.py" -v
 
-      # Only runs while the old pytest-style file still exists.
-      # Once it is renamed to test_logic_manager.py (unittest style), the step above covers it.
-      - name: Run logic manager tests (pytest style)
-        if: hashFiles('logic_manager_testing.py') != ''
-        run: |
-          pip install pytest
-          python -m pytest -q logic_manager_testing.py
-
+        # Build the Docker image from our Dockerfile, to prove it still builds.
       - name: Build Docker image
         run: docker build -t inf1103-p12-g9 .
 
+      # Run the tests INSIDE the container with "--network none", which turns
+      # off internet access. This proves the tests are fully offline and that
+      # the image contains everything it needs.
       - name: Run the tests inside Docker, offline
         run: docker run --rm --network none inf1103-p12-g9 python -m unittest discover -p "test_*.py" -v
 
+  # ==========================================================================
+  # JOB 2: publish (the CD part)
+  # Builds the release image and uploads it to GitHub Container Registry.
+  # ==========================================================================
   publish:
-    # Release: runs only for version tags, and only after the test job has passed.
+    # Wait for the "test" job. If it fails, this job is skipped, so a broken
+    # version is never published.
     needs: test
+    # Run only when the push was a version tag (not for normal branch pushes).
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
+      # This job also needs permission to upload ("write") to GitHub Packages.
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
 
+      # Safety check: the tag must look exactly like v1.2.3.
+      # Tags such as v1.0 or v1.0.0-beta stop the release here.
       - name: Check the tag looks like vMAJOR.MINOR.PATCH
         run: |
           if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -58,11 +90,18 @@ jobs:
             exit 1
           fi
 
+      # Work out the image name and version, and save them as variables
+      # for the later steps:
+      #   IMAGE   = ghcr.io/<owner>/inf1103-p12-g9
+      #             (",," makes the owner name lowercase, which registries require)
+      #   VERSION = the tag without the leading "v", e.g. v1.0.0 -> 1.0.0
       - name: Set image name and version
         run: |
           echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/inf1103-p12-g9" >> "$GITHUB_ENV"
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
+      # Build the image under a temporary local name, "release-candidate".
+      # The labels record which repository and version it came from.
       - name: Build image
         run: |
           docker build \
@@ -71,9 +110,14 @@ jobs:
             -t release-candidate .
           docker image ls release-candidate
 
+      # Test the exact image we are about to publish, offline.
+      # If any test fails, the steps below never run, so nothing is published.
       - name: Run the tests inside the release image, offline
         run: docker run --rm --network none release-candidate python -m unittest discover -p "test_*.py" -v
 
+      # Security check: print the environment variables inside the image and
+      # fail if GEMINI_API_KEY is there. Users must supply their own key when
+      # they run the container (docker run -e GEMINI_API_KEY=...).
       - name: Check that no API key is baked into the image
         run: |
           if docker run --rm release-candidate env | grep -q "GEMINI_API_KEY"; then
@@ -81,9 +125,14 @@ jobs:
             exit 1
           fi
 
+      # Log in to GitHub Container Registry (ghcr.io) using the temporary
+      # token GitHub gives every workflow run. No password is stored in the repo.
       - name: Log in to GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
+      # Give the tested image its public names, then upload it:
+      #   :1.0.0  -> this exact version (never changes)
+      #   :latest -> always points to the newest release
       - name: Push versioned image and latest
         run: |
           docker tag release-candidate "$IMAGE:$VERSION"
