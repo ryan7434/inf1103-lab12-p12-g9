@@ -5,6 +5,7 @@ import urllib.request
 from typing import Any
 
 from .ai_configuration_error import AIConfigurationError
+from .ai_overloaded_error import AIOverloadedError
 from .ai_provider import AIProvider
 from .ai_rate_limit_error import AIRateLimitError
 from .ai_response_error import AIResponseError
@@ -16,6 +17,8 @@ class GeminiProvider(AIProvider):
     """AIProvider backed by the Gemini REST API (standard library only)."""
 
     DEFAULT_MODEL = "gemini-3.8-flash"
+    # Tried in this order when the default model is busy (see FallbackProvider).
+    FALLBACK_MODELS = ("gemini-3.6-flash",)
     #{model} is filled in with the model name when the URL is built.
     API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
@@ -82,6 +85,9 @@ class GeminiProvider(AIProvider):
               # HTTP 429 = too many requests, which needs a longer wait.
             if error.code == 429:
                 raise AIRateLimitError("Gemini rate limit hit (HTTP 429).") from error
+            # HTTP 503 = the model is overloaded ("high demand"); it usually clears soon.
+            if error.code == 503:
+                raise AIOverloadedError("Gemini model overloaded (HTTP 503).") from error
              # Any other HTTP error (400, 500...) includes the server's message for debugging.
             raise AITransportError(
                 f"HTTPError calling Gemini API: {error.code} {error.reason} "

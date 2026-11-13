@@ -11,7 +11,9 @@ from .ai_error import AIError
 from .ai_configuration_error import AIConfigurationError
 from .ai_transport_error import AITransportError
 from .ai_rate_limit_error import AIRateLimitError
+from .ai_overloaded_error import AIOverloadedError
 from .ai_response_error import AIResponseError
+from .fallback_provider import FallbackProvider
 from .recipe_validator import RecipeValidator
 from .response_validator import ResponseValidator
 from .response_parser import ResponseParser
@@ -21,7 +23,8 @@ from .recipe_prompt_builder import RecipePromptBuilder
 __all__ = [
     "AIProvider", "GeminiProvider", "ErrorLogger",
     "AIError", "AIConfigurationError", "AITransportError",
-    "AIRateLimitError", "AIResponseError",
+    "AIRateLimitError", "AIOverloadedError", "AIResponseError",
+    "FallbackProvider",
     "RecipeValidator", "ResponseValidator", "ResponseParser",
     "RecipePromptBuilder",
 ]
