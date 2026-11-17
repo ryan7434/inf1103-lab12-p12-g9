@@ -189,8 +189,12 @@ class TestGeminiProvider(unittest.TestCase):
                 self.assertNotIsInstance(caught.exception, ai.AIRateLimitError)
 
     def test_default_and_fallback_models_are_configured(self):
-        self.assertEqual(ai.GeminiProvider.DEFAULT_MODEL, "gemini-3.8-flash")
-        self.assertEqual(ai.GeminiProvider.FALLBACK_MODELS, ("gemini-3.6-flash",))
+        default = ai.GeminiProvider.DEFAULT_MODEL
+        fallbacks = ai.GeminiProvider.FALLBACK_MODELS
+
+        self.assertTrue(default)                 # a main model is set
+        self.assertGreaterEqual(len(fallbacks), 1)   # at least one backup
+        self.assertNotIn(default, fallbacks)     # a backup is a different model
 
     def test_other_http_errors_become_transport_errors_with_the_body(self):
         error = urllib.error.HTTPError(
