@@ -16,9 +16,9 @@ from .ai_transport_error import AITransportError
 class GeminiProvider(AIProvider):
     """AIProvider backed by the Gemini REST API (standard library only)."""
 
-    DEFAULT_MODEL = "gemini-3.8-flash"
+    DEFAULT_MODEL = "gemini-3.6-flash"
     # Tried in this order when the default model is busy (see FallbackProvider).
-    FALLBACK_MODELS = ("gemini-3.6-flash",)
+    FALLBACK_MODELS = ("gemini-3.8-flash",)
     #{model} is filled in with the model name when the URL is built.
     API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
